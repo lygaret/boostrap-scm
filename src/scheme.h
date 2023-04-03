@@ -8,7 +8,8 @@ typedef enum {
   CHARACTER,
   BOOLEAN,
   PAIR,
-  OBJVECTOR
+  OBJVECTOR,
+  SYMBOL
 } object_type;
 
 typedef struct object {
@@ -32,6 +33,9 @@ typedef struct object {
       int size;
       struct object** head;
     } objvector;
+    struct {
+      struct object* value;
+    } symbol;
   } data;
 } object;
 
@@ -40,6 +44,7 @@ typedef struct context {
   object *true_obj;
   object *false_obj;
   object *interned_strs;
+  int allocated;
 } context;
 
 context *alloc_context(void);
@@ -76,6 +81,7 @@ object *objvector_get(object *obj, int index);
 void objvector_set(object *obj, int index, object* val);
 
 object *intern_string(context *ctxt, char *value, int len);
+object *make_symbol(object *value);
 
 /* reader */
 

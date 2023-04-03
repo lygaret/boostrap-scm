@@ -23,6 +23,7 @@ void print_pair(object *obj) {
 
 void print(object *obj) {
   int i;
+  object *ref;
   
   switch (obj->type) {
   case NIL:
@@ -54,8 +55,13 @@ void print(object *obj) {
     printf("#%c", obj->data.byte.value ? 't' : 'f');
     break;
 
+  case SYMBOL:
+    ref = obj->data.symbol.value;
+    printf("%.*s", ref->data.string.length, ref->data.string.value);
+    break;
+
   case STRING:
-    printf("\"%s\"", obj->data.string.value);
+    printf("\"%.*s\"", obj->data.string.length, obj->data.string.value);
     break;
 
   case CHARACTER:

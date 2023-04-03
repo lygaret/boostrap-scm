@@ -4,7 +4,7 @@
 #include <ctype.h>
 
 #include "scheme.h"
-#define INTERNED_TABLE_SIZE 11 /* prime! */
+#define INTERNED_TABLE_SIZE 97 /* prime! */
 
 /* no gc, so will live forever */
 object *alloc_object(void) {
@@ -105,6 +105,15 @@ int is_string(object *obj) {
   return obj->type == STRING;
 }
 
+object *make_symbol(object *value) {
+  object *obj;
+
+  obj = alloc_object();
+  obj->type = SYMBOL;
+  obj->data.symbol.value = value;
+  return obj;
+}
+
 /* pairs */
 
 object *make_pair(object *car, object *cdr) {
@@ -188,8 +197,8 @@ void objvector_set(object* obj, int index, object* value) {
 /* interned strings | easy hash table, built on objvector */
 
 int intern_hash(char *value, int len, int table_size) {
-  int i;
-  int hash = 0;
+  unsigned int i;
+  unsigned int hash = 0;
   for (i = 0; i < len; i++) {
     hash = (hash << 5) + value[i];
   }

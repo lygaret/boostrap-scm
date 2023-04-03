@@ -20,6 +20,7 @@ object *read_macrochar(context *ctxt, FILE *in);
 object *read_pair(context *ctxt, FILE *in);
 object *read_slashchar(context *ctxt, FILE *in);
 object *read_string(context *ctxt, FILE *in);
+object *read_symbol(context *ctxt, FILE *in);
 object *read_objvector(context *ctxt, FILE *in);
 
 object *read(context *ctxt, FILE *in) {
@@ -29,7 +30,14 @@ object *read(context *ctxt, FILE *in) {
   consume_ws(in);
 
   c = getc(in);
-  if      (c == '#') {
+  if (c == EOF) {
+    fprintf(stderr, "bye");
+    exit(0);
+  }
+  else if (c == '(') {
+    out = read_pair(ctxt, in);
+  }
+  else if (c == '#') {
     out = read_macrochar(ctxt, in);
   }
   else if (c == '\\') {
@@ -42,12 +50,9 @@ object *read(context *ctxt, FILE *in) {
     ungetc(c, in);
     out = read_fixnum(ctxt, in);
   }
-  else if (c == '(') {
-    out = read_pair(ctxt, in);
-  }
   else {
-    fprintf(stderr, "bad input, unexpected '%c'\n", c);
-    exit(1);
+    ungetc(c, in);
+    out = read_symbol(ctxt, in);
   }
 
   /* require a delimiter after input */
@@ -145,7 +150,7 @@ object *read_objvector_recur(context *ctxt, FILE *in, int currlength) {
   consume_ws(in);
   if (consume_char(']', in)) {
     /* we hit the bottom, we know the length */
-    return make_objvector(currlength);
+    return make_objvector(currlength, ctxt->nil);
   }
 
   next_obj = read(ctxt, in);
@@ -213,6 +218,33 @@ object *read_fixnum(context *ctxt, FILE *in) {
   }
 
   return make_fixnum(num);
+}
+
+object *read_symbol(context *ctxt, FILE *in) {
+  char c;
+  char buffer[BUFFER_MAX];
+  int len = 0;
+  object *str;
+
+  while (1) {
+    c = getc(in);
+    if (is_delimiter(c) || isspace(c))
+      break;
+
+    if (len < BUFFER_MAX - 1) {
+      buffer[len++] = c;
+    }
+    else {
+      fprintf(stderr, "string too long, max length is %d", BUFFER_MAX);
+      exit(1);
+    }
+  }
+
+  ungetc(c, in);
+  str = intern_string(ctxt, buffer, len);
+  str = make_symbol(str);
+
+  return str;
 }
 
 /* the opening paren has already been read */

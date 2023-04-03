@@ -39,7 +39,9 @@ void print(object *obj) {
     printf("#[");
     for (i = 0; i < obj->data.objvector.size; i++) {
       print(obj->data.objvector.head[i]);
-      printf(" ");
+      if (i + 1 < obj->data.objvector.size) {
+        printf(" ");
+      }
     }
     printf("]");
     break;

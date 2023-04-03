@@ -4,6 +4,7 @@
 #include <ctype.h>
 
 #include "scheme.h"
+#define INTERNED_TABLE_SIZE 11 /* prime! */
 
 /* no gc, so will live forever */
 object *alloc_object(void) {
@@ -23,6 +24,9 @@ context *alloc_context(void) {
   context *ctxt;
   ctxt = malloc(sizeof(context));
 
+  ctxt->nil = alloc_object();
+  ctxt->nil->type = NIL;
+
   ctxt->true_obj = alloc_object();
   ctxt->true_obj->type = BOOLEAN;
   ctxt->true_obj->data.byte.value = 1;
@@ -31,8 +35,7 @@ context *alloc_context(void) {
   ctxt->false_obj->type = BOOLEAN;
   ctxt->false_obj->data.byte.value = 0;
 
-  ctxt->nil = alloc_object();
-  ctxt->nil->type = NIL;
+  ctxt->interned_strs = make_objvector(INTERNED_TABLE_SIZE, ctxt->nil);
 
   return ctxt;
 }
@@ -88,6 +91,7 @@ object *make_string(char *value, int len) {
 
   obj = alloc_object();
   obj->type = STRING;
+  obj->data.string.length = len;
   obj->data.string.value = malloc(len);
   if (obj->data.string.value == NULL) {
     fprintf(stderr, "out of memory!\n");
@@ -97,6 +101,9 @@ object *make_string(char *value, int len) {
   return obj;
 }
 
+int is_string(object *obj) {
+  return obj->type == STRING;
+}
 
 /* pairs */
 
@@ -137,7 +144,8 @@ void pair_set_cdr(object *obj, object *val) {
 
 /* obj vector | linear array of object */
 
-object* make_objvector(int size) {
+object* make_objvector(int size, object *fill) {
+  int i;
   object*  obj;
   object** vec;
 
@@ -151,6 +159,10 @@ object* make_objvector(int size) {
   obj->type = OBJVECTOR;
   obj->data.objvector.size = size;
   obj->data.objvector.head = vec;
+
+  for (i = 0; i < size; i++) {
+    obj->data.objvector.head[i] = fill;
+  }
 
   return obj;
 }
@@ -172,3 +184,58 @@ void objvector_set(object* obj, int index, object* value) {
 
   obj->data.objvector.head[index] = value;
 }
+
+/* interned strings | easy hash table, built on objvector */
+
+int intern_hash(char *value, int len, int table_size) {
+  int i;
+  int hash = 0;
+  for (i = 0; i < len; i++) {
+    hash = (hash << 5) + value[i];
+  }
+
+  return hash % table_size;
+}
+
+object *intern_string(context *ctxt, char *value, int len) { 
+  object *str, *pair, *car, *cdr, *table;
+  int hash;
+
+  table = ctxt->interned_strs;
+  hash  = intern_hash(value, len, table->data.objvector.size);
+  pair  = table->data.objvector.head[hash];
+
+  if (pair == ctxt->nil) {
+    /* nothing hashed here yet, so set the value */
+    str  = make_string(value, len);
+    pair = make_pair(str, ctxt->nil);
+    table->data.objvector.head[hash] = pair;
+
+    return str;
+  }
+  else {
+    while (1) {
+      car = pair_car(pair);
+      cdr = pair_cdr(pair);
+
+      if (is_string(car) && 
+          car->data.string.length == len &&
+          strncmp(car->data.string.value, value, len) == 0) {
+        /* found it */
+        return car;
+      }
+    
+      if (is_nil(cdr)) {
+        /* add it */
+        str  = make_string(value, len);
+        cdr  = make_pair(str, ctxt->nil);
+        pair_set_cdr(pair, cdr);
+        
+        return str;
+      }
+
+      pair = cdr;
+    }
+  }
+}
+

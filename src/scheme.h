@@ -19,6 +19,7 @@ typedef struct object {
     } byte;
     struct {
       char *value;
+      int length;
     } string;
     struct {
       long value;
@@ -38,6 +39,7 @@ typedef struct context {
   object *nil;
   object *true_obj;
   object *false_obj;
+  object *interned_strs;
 } context;
 
 context *alloc_context(void);
@@ -55,8 +57,10 @@ object *make_character(char value);
 char is_character(object *obj);
 
 object *make_string(char *value, int len);
+int is_string(object *obj);
+
 object *make_pair(object *car, object *cdr);
-object *make_objvector(int size);
+object *make_objvector(int size, object *fill);
 
 char is_nil(object *obj);
 char is_pair(object *obj);
@@ -70,6 +74,8 @@ void pair_set_cdr(object *obj, object* val);
 
 object *objvector_get(object *obj, int index);
 void objvector_set(object *obj, int index, object* val);
+
+object *intern_string(context *ctxt, char *value, int len);
 
 /* reader */
 

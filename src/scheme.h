@@ -23,6 +23,10 @@ typedef struct object {
       int length;
     } string;
     struct {
+      char *value;
+      int length;
+    } symbol;
+    struct {
       long value;
     } fixnum;
     struct {
@@ -33,9 +37,6 @@ typedef struct object {
       int size;
       struct object** head;
     } objvector;
-    struct {
-      struct object* value;
-    } symbol;
   } data;
 } object;
 

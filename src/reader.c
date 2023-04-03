@@ -224,7 +224,6 @@ object *read_symbol(context *ctxt, FILE *in) {
   char c;
   char buffer[BUFFER_MAX];
   int len = 0;
-  object *str;
 
   while (1) {
     c = getc(in);
@@ -241,10 +240,7 @@ object *read_symbol(context *ctxt, FILE *in) {
   }
 
   ungetc(c, in);
-  str = intern_string(ctxt, buffer, len);
-  str = make_symbol(str);
-
-  return str;
+  return make_symbol(ctxt, buffer, len);
 }
 
 /* the opening paren has already been read */

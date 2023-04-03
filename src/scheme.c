@@ -105,15 +105,6 @@ int is_string(object *obj) {
   return obj->type == STRING;
 }
 
-object *make_symbol(object *value) {
-  object *obj;
-
-  obj = alloc_object();
-  obj->type = SYMBOL;
-  obj->data.symbol.value = value;
-  return obj;
-}
-
 /* pairs */
 
 object *make_pair(object *car, object *cdr) {
@@ -206,8 +197,12 @@ int intern_hash(char *value, int len, int table_size) {
   return hash % table_size;
 }
 
-object *intern_string(context *ctxt, char *value, int len) { 
-  object *str, *pair, *car, *cdr, *table;
+int is_symbol(object *obj) {
+  return obj->type == SYMBOL;
+}
+
+object *make_symbol(context *ctxt, char *value, int len) { 
+  object *obj, *pair, *car, *cdr, *table;
   int hash;
 
   table = ctxt->interned_strs;
@@ -216,19 +211,21 @@ object *intern_string(context *ctxt, char *value, int len) {
 
   if (pair == ctxt->nil) {
     /* nothing hashed here yet, so set the value */
-    str  = make_string(value, len);
-    pair = make_pair(str, ctxt->nil);
-    table->data.objvector.head[hash] = pair;
+    obj = make_string(value, len);
+    obj->type = SYMBOL;
 
-    return str;
+    pair = make_pair(obj, ctxt->nil);
+    objvector_set(table, hash, pair);
+
+    return obj;
   }
   else {
     while (1) {
       car = pair_car(pair);
       cdr = pair_cdr(pair);
 
-      if (is_string(car) && 
-          car->data.string.length == len &&
+      if (is_symbol(car) && 
+          car->data.symbol.length == len &&
           strncmp(car->data.string.value, value, len) == 0) {
         /* found it */
         return car;
@@ -236,15 +233,16 @@ object *intern_string(context *ctxt, char *value, int len) {
     
       if (is_nil(cdr)) {
         /* add it */
-        str  = make_string(value, len);
-        cdr  = make_pair(str, ctxt->nil);
+        obj = make_string(value, len);
+        obj->type = SYMBOL;
+
+        cdr = make_pair(obj, ctxt->nil);
         pair_set_cdr(pair, cdr);
         
-        return str;
+        return obj;
       }
 
       pair = cdr;
     }
   }
 }
-

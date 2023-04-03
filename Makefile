@@ -1,5 +1,5 @@
 CC       ?=
-CFLAGS   ?= -g -O3 -Wall
+CFLAGS   ?= -g -Wall
 DBGFLAGS ?=
 
 BIN_PATH       := out

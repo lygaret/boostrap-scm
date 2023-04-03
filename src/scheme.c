@@ -134,3 +134,41 @@ object *pair_cdr(object *obj) {
 void pair_set_cdr(object *obj, object *val) {
   obj->data.pair.cdr = val; 
 }
+
+/* obj vector | linear array of object */
+
+object* make_objvector(int size) {
+  object*  obj;
+  object** vec;
+
+  vec = malloc(size * sizeof(object*));
+  if (vec == NULL) {
+    fprintf(stderr, "out of memory!\n");
+    exit(1);
+  }
+
+  obj = alloc_object();
+  obj->type = OBJVECTOR;
+  obj->data.objvector.size = size;
+  obj->data.objvector.head = vec;
+
+  return obj;
+}
+
+object* objvector_get(object* obj, int index) {
+  if (index < 0 || index >= obj->data.objvector.size) {
+    fprintf(stderr, "out of bounds!");
+    exit(1);
+  }
+
+  return obj->data.objvector.head[index];
+}
+
+void objvector_set(object* obj, int index, object* value) {
+  if (index < 0 || index >= obj->data.objvector.size) {
+    fprintf(stderr, "out of bounds!");
+    exit(1);
+  }
+
+  obj->data.objvector.head[index] = value;
+}

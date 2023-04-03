@@ -11,15 +11,16 @@ char peek(FILE *in);
 int is_delimiter(char c);
 
 int consume_char(char c, FILE *in);
-int consume_ws(FILE *in);
 int consume_string(const char* match, int len, FILE *in);
+int consume_ws(FILE *in);
 int consume_line(FILE *in);
 
-object *read_pair(context *ctxt, FILE *in);
-object *read_string(context *ctxt, FILE *in);
-object *read_macrochar(context *ctxt, FILE *in);
-object *read_slashchar(context *ctxt, FILE *in);
 object *read_fixnum(context *ctxt, FILE *in);
+object *read_macrochar(context *ctxt, FILE *in);
+object *read_pair(context *ctxt, FILE *in);
+object *read_slashchar(context *ctxt, FILE *in);
+object *read_string(context *ctxt, FILE *in);
+object *read_objvector(context *ctxt, FILE *in);
 
 object *read(context *ctxt, FILE *in) {
   int c;
@@ -69,6 +70,9 @@ object *read_macrochar(context *ctxt, FILE *in) {
 
   case 'f':
     return ctxt->false_obj;
+
+  case '[':
+    return read_objvector(ctxt, in);
 
   default:
     fprintf(stderr, "(macrochar) bad input, unexpected '%c'\n", c);
@@ -130,6 +134,29 @@ object *read_string(context *ctxt, FILE *in) {
   
   buffer[len++] = '\0';
   return make_string(buffer, len);
+}
+
+/* '#[' has already been consumed */
+/* read as pairs, convert to vector once we know the length */
+object *read_objvector_recur(context *ctxt, FILE *in, int currlength) {
+  object *vector;
+  object *next_obj;
+
+  consume_ws(in);
+  if (consume_char(']', in)) {
+    /* we hit the bottom, we know the length */
+    return make_objvector(currlength);
+  }
+
+  next_obj = read(ctxt, in);
+  vector   = read_objvector_recur(ctxt, in, currlength + 1);
+
+  objvector_set(vector, currlength, next_obj);
+  return vector;
+}
+
+object *read_objvector(context *ctxt, FILE *in) {
+  return read_objvector_recur(ctxt, in, 0);
 }
 
 object *read_fixnum(context *ctxt, FILE *in) {
@@ -234,6 +261,7 @@ char peek(FILE *in) {
 int is_delimiter(char c) {
   return isspace(c) || c == EOF ||
            c == '(' || c == ')' ||
+           c == '[' || c == ']' ||
            c == '"' || c == ';' ;
 }
 

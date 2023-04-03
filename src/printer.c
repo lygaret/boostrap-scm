@@ -22,8 +22,9 @@ void print_pair(object *obj) {
 }
 
 void print(object *obj) {
+  int i;
+  
   switch (obj->type) {
-
   case NIL:
     printf("()");
     break;
@@ -32,6 +33,15 @@ void print(object *obj) {
     printf("(");
     print_pair(obj);
     printf(")");
+    break;
+
+  case OBJVECTOR:
+    printf("#[");
+    for (i = 0; i < obj->data.objvector.size; i++) {
+      print(obj->data.objvector.head[i]);
+      printf(" ");
+    }
+    printf("]");
     break;
 
   case FIXNUM:

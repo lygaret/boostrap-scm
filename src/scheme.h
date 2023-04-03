@@ -7,7 +7,8 @@ typedef enum {
   STRING,
   CHARACTER,
   BOOLEAN,
-  PAIR
+  PAIR,
+  OBJVECTOR
 } object_type;
 
 typedef struct object {
@@ -26,6 +27,10 @@ typedef struct object {
       struct object* car;
       struct object* cdr;
     } pair;
+    struct {
+      int size;
+      struct object** head;
+    } objvector;
   } data;
 } object;
 
@@ -50,17 +55,21 @@ object *make_character(char value);
 char is_character(object *obj);
 
 object *make_string(char *value, int len);
-
 object *make_pair(object *car, object *cdr);
+object *make_objvector(int size);
 
-char is_pair(object *obj);
 char is_nil(object *obj);
+char is_pair(object *obj);
+char is_objvector(object *obj);
 
 object *pair_car(object *obj);
 void pair_set_car(object *obj, object* val);
 
 object *pair_cdr(object *obj);
 void pair_set_cdr(object *obj, object* val);
+
+object *objvector_get(object *obj, int index);
+void objvector_set(object *obj, int index, object* val);
 
 /* reader */
 

@@ -45,7 +45,7 @@ typedef struct context {
   object *true_obj;
   object *false_obj;
   object *interned_strs;
-  int allocated;
+  object *quote_sym;
 } context;
 
 context *alloc_context(void);
@@ -66,23 +66,20 @@ object *make_string(char *value, int len);
 int is_string(object *obj);
 
 object *make_pair(object *car, object *cdr);
-object *make_objvector(int size, object *fill);
-
 char is_nil(object *obj);
 char is_pair(object *obj);
-char is_objvector(object *obj);
-
 object *pair_car(object *obj);
 void pair_set_car(object *obj, object* val);
-
 object *pair_cdr(object *obj);
 void pair_set_cdr(object *obj, object* val);
 
+object *make_objvector(int size, object *fill);
+char is_objvector(object *obj);
 object *objvector_get(object *obj, int index);
 void objvector_set(object *obj, int index, object* val);
 
-object *intern_string(context *ctxt, char *value, int len);
-object *make_symbol(object *value);
+object *make_symbol(context *ctxt, char *value, int len);
+int is_symbol(object *obj);
 
 /* reader */
 

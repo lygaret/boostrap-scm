@@ -36,6 +36,7 @@ context *alloc_context(void) {
   ctxt->false_obj->data.byte.value = 0;
 
   ctxt->interned_strs = make_objvector(INTERNED_TABLE_SIZE, ctxt->nil);
+  ctxt->quote_sym     = make_symbol(ctxt, "quote", 5);
 
   return ctxt;
 }

@@ -37,6 +37,10 @@ object *read(context *ctxt, FILE *in) {
   else if (c == '(') {
     out = read_pair(ctxt, in);
   }
+  else if (c == '\'') {
+    out = read(ctxt, in);
+    out = make_pair(ctxt->quote_sym, out);
+  }
   else if (c == '#') {
     out = read_macrochar(ctxt, in);
   }

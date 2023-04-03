@@ -1,0 +1,8 @@
+#+TITLE: miriam
+
+miriam is:
+
+- A scheme-like dialect
+- A compiler for that language
+- A bare-metal runtime
+- A bootable kernel, with multiple processes

@@ -18,11 +18,39 @@ object *eval(context *ctxt, object *obj) {
     return environment_get(ctxt, ctxt->current_environment, obj);
 
   case PAIR:
-    if (pair_car(obj) == ctxt->quote_sym) {
+    object *car = pair_car(obj); 
+    object *cdr = pair_cdr(obj);
+
+    if (car == ctxt->quote_sym) {
+      return cdr;
+    }
+
+    if (car == ctxt->cons_sym) {
+      car = eval(ctxt, pair_car(cdr));
+      cdr = eval(ctxt, pair_cdr(cdr));
+      return make_pair(car, cdr);
+    }
+
+    if (car == ctxt->car_sym) {
+      cdr = eval(ctxt, pair_car(cdr));
+      return pair_car(obj);
+    }
+
+    if (car == ctxt->cdr_sym) {
+      cdr = eval(ctxt, pair_car(cdr));
       return pair_cdr(obj);
     }
 
-    return ctxt->nil;
+    else if (car == ctxt->set_sym || car == ctxt->define_sym) {
+      car = pair_car(cdr);
+      cdr = eval(ctxt, pair_cadr(cdr));
+      ctxt->current_environment = environment_update(ctxt, ctxt->current_environment, car, cdr);
+
+      return cdr;
+    }
+      
+    printf("todo: apply");
+    return obj;
 
   case OBJVECTOR:
     return ctxt->nil;

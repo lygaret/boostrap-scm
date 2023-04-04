@@ -49,7 +49,13 @@ typedef struct context {
   object *default_environment;
   object *current_environment;
 
+  object *define_sym;
   object *quote_sym;
+  object *set_sym;
+
+  object *cons_sym;
+  object *car_sym;
+  object *cdr_sym;
 } context;
 
 context *alloc_context(void);
@@ -84,6 +90,7 @@ object *pair_cdr(object *obj);
 #define pair_cadr(obj) pair_car(pair_cdr(obj))
 #define pair_cdar(obj) pair_cdr(pair_car(obj))
 #define pair_cddr(obj) pair_cdr(pair_cdr(obj))
+#define pair_caddr(obj) pair_car(pair_cddr(obj))
 
 void pair_set_car(object *obj, object* val);
 void pair_set_cdr(object *obj, object* val);

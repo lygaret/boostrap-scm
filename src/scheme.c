@@ -40,7 +40,13 @@ context *alloc_context(void) {
   ctxt->default_environment = ctxt->nil;
   ctxt->current_environment = ctxt->nil;
 
+  ctxt->define_sym = make_symbol(ctxt, "define", 6);
   ctxt->quote_sym = make_symbol(ctxt, "quote", 5);
+  ctxt->set_sym = make_symbol(ctxt, "set!", 4);
+
+  ctxt->cons_sym = make_symbol(ctxt, "cons", 4);
+  ctxt->car_sym = make_symbol(ctxt, "car", 3);
+  ctxt->cdr_sym = make_symbol(ctxt, "cdr", 3);
 
   return ctxt;
 }

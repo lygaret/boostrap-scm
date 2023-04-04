@@ -14,6 +14,9 @@ object *eval(context *ctxt, object *obj) {
   case BOOLEAN:
     return obj;
 
+  case SYMBOL:
+    return environment_get(ctxt, ctxt->current_environment, obj);
+
   case PAIR:
     if (pair_car(obj) == ctxt->quote_sym) {
       return pair_cdr(obj);
@@ -22,7 +25,6 @@ object *eval(context *ctxt, object *obj) {
     return ctxt->nil;
 
   case OBJVECTOR:
-  case SYMBOL:
     return ctxt->nil;
 
   default:

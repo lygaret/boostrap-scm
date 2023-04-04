@@ -44,12 +44,19 @@ typedef struct context {
   object *nil;
   object *true_obj;
   object *false_obj;
-  object *interned_strs;
+
+  object *symbols_table;
+  object *default_environment;
+  object *current_environment;
+
   object *quote_sym;
 } context;
 
 context *alloc_context(void);
 object *alloc_object(void);
+
+object* environment_update(context *ctxt, object *env, object* key, object* value);
+object* environment_get(context *ctxt, object *env, object* key);
 
 object *make_fixnum(long value);
 char is_fixnum(object *obj);
@@ -68,9 +75,17 @@ int is_string(object *obj);
 object *make_pair(object *car, object *cdr);
 char is_nil(object *obj);
 char is_pair(object *obj);
+
 object *pair_car(object *obj);
-void pair_set_car(object *obj, object* val);
 object *pair_cdr(object *obj);
+
+#define pair_cons(a,b) make_pair(a, b)
+#define pair_caar(obj) pair_car(pair_car(obj))
+#define pair_cadr(obj) pair_car(pair_cdr(obj))
+#define pair_cdar(obj) pair_cdr(pair_car(obj))
+#define pair_cddr(obj) pair_cdr(pair_cdr(obj))
+
+void pair_set_car(object *obj, object* val);
 void pair_set_cdr(object *obj, object* val);
 
 object *make_objvector(int size, object *fill);

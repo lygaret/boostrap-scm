@@ -4,6 +4,7 @@
 #include <ctype.h>
 
 #include "scheme.h"
+
 #define INTERNED_TABLE_SIZE 97 /* prime! */
 
 /* no gc, so will live forever */
@@ -35,10 +36,30 @@ context *alloc_context(void) {
   ctxt->false_obj->type = BOOLEAN;
   ctxt->false_obj->data.byte.value = 0;
 
-  ctxt->interned_strs = make_objvector(INTERNED_TABLE_SIZE, ctxt->nil);
-  ctxt->quote_sym     = make_symbol(ctxt, "quote", 5);
+  ctxt->symbols_table = make_objvector(INTERNED_TABLE_SIZE, ctxt->nil);
+  ctxt->default_environment = ctxt->nil;
+  ctxt->current_environment = ctxt->nil;
+
+  ctxt->quote_sym = make_symbol(ctxt, "quote", 5);
 
   return ctxt;
+}
+
+object *environment_update(context *ctxt, object *env, object *key, object *value) {
+  return pair_cons(pair_cons(key, value), env);
+}
+
+object *environment_get(context *ctxt, object *env, object *key) {
+  object *cursor = env;
+  while (!is_nil(cursor)) {
+    if (key == pair_caar(cursor)) {
+      return pair_cdar(cursor);
+    }
+
+    cursor = pair_cdr(cursor);
+  }
+
+  return ctxt->nil;
 }
 
 /* fixnums */
@@ -206,7 +227,7 @@ object *make_symbol(context *ctxt, char *value, int len) {
   object *obj, *pair, *car, *cdr, *table;
   int hash;
 
-  table = ctxt->interned_strs;
+  table = ctxt->symbols_table;
   hash  = intern_hash(value, len, table->data.objvector.size);
   pair  = table->data.objvector.head[hash];
 

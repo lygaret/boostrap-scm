@@ -1,5 +1,5 @@
 CC       ?=
-CFLAGS   ?= -g -Wall
+CFLAGS   ?= -g -O0 -Wall 
 DBGFLAGS ?=
 
 BIN_PATH       := out
@@ -10,17 +10,23 @@ TARGET         := $(BIN_PATH)/scheme
 
 SRC            := $(foreach x, ${SRC_PATH}, $(wildcard $(addprefix ${x}/*,.c*)))
 OBJ            := $(addprefix ${OBJ_PATH}/, $(addsuffix .o, $(notdir $(basename $(SRC)))))
+DEP            := $(addprefix ${OBJ_PATH}/, $(addsuffix .d, $(notdir $(basename $(SRC)))))
 
 CLEAN_LIST     := $(OBJ) $(OBJ_PATH)
 CLEANALL_LIST  := $(TARGET) $(CLEAN_LIST) $(BIN_PATH)
+
+# depend on the makefile too
+.EXTRA_PREREQS:= $(abspath $(lastword $(MAKEFILE_LIST)))
 
 default: makedir all
 
 $(TARGET): $(OBJ)
 	$(CC) -o $@ $(OBJ) $(CFLAGS)
 
+-include $(DEP)
+
 $(OBJ_PATH)/%.o: $(SRC_PATH)/%.c*
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) -MMD -c -o $@ $<
 
 .PHONY: makedir
 makedir:

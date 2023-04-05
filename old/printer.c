@@ -46,6 +46,10 @@ void print(object *obj) {
     printf("]");
     break;
 
+  case PRIMITIVE_PROC:
+    printf("#<procedure:%p>", obj->data.primitive_proc.fn);
+    break;
+
   case FIXNUM:
     printf("%ld", obj->data.fixnum.value);
     break;

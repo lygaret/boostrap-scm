@@ -1,40 +1,30 @@
 #include <ctype.h>
-#include <stdbool.h>
-#include <stdio.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 #include "scheme.h"
-#ifdef exclude_plz
-
 #define BUFFER_MAX 2048
-
-/* input stream */
-
-char peek(FILE *in);
-
-bool consume_ws(FILE *in);
-bool consume_line(FILE *in);
-
-bool consume_char(const char c, FILE *in);
-bool consume_chars(const char* match, int len, FILE *in);
 
 /* reader */
 
+char peek(FILE *in);
 int is_delimiter(char c);
 
-value_t read_integer(vm_t *vm, FILE *in);
+int consume_char(char c, FILE *in);
+int consume_string(const char* match, int len, FILE *in);
+int consume_ws(FILE *in);
+int consume_line(FILE *in);
 
-/* object *read_macrochar(context *ctxt, FILE *in); */
-/* object *read_pair(context *ctxt, FILE *in); */
-/* object *read_slashchar(context *ctxt, FILE *in); */
-/* object *read_string(context *ctxt, FILE *in); */
-/* object *read_symbol(context *ctxt, FILE *in); */
-/* object *read_objvector(context *ctxt, FILE *in); */
+object *read_fixnum(context *ctxt, FILE *in);
+object *read_macrochar(context *ctxt, FILE *in);
+object *read_pair(context *ctxt, FILE *in);
+object *read_slashchar(context *ctxt, FILE *in);
+object *read_string(context *ctxt, FILE *in);
+object *read_symbol(context *ctxt, FILE *in);
+object *read_objvector(context *ctxt, FILE *in);
 
-value_t read(vm_t *vm, FILE *in) {
-  value_t v;
-
-  char c;
+object *read(context *ctxt, FILE *in) {
+  int c;
   object *out = 0;
 
   consume_ws(in);
@@ -103,16 +93,16 @@ object *read_macrochar(context *ctxt, FILE *in) {
 object *read_slashchar(context *ctxt, FILE *in) {
   int c;
 
-  if (consume_chars("newline", 7, in)) {
+  if (consume_string("newline", 7, in)) {
     return make_character('\n');
   }
-  else if (consume_chars("tab", 3, in)) {
+  else if (consume_string("tab", 3, in)) {
     return make_character('\t');
   }
-  else if (consume_chars("space", 5, in)) {
+  else if (consume_string("space", 5, in)) {
     return make_character(' ');
   }
-  else if (consume_chars("backspace", 9, in)) {
+  else if (consume_string("backspace", 9, in)) {
     return make_character('\b');
   }
   else {
@@ -183,7 +173,7 @@ object *read_fixnum(context *ctxt, FILE *in) {
   long num = 0;
 
   /* consume binary strings */
-  if (consume_chars("0b", 2, in)) {
+  if (consume_string("0b", 2, in)) {
     while((c = getc(in))) {
       if (c == '0') {
         num = (num * 2);
@@ -201,7 +191,7 @@ object *read_fixnum(context *ctxt, FILE *in) {
   }
 
   /* consume hex strings */
-  else if (consume_chars("0x", 2, in)) {
+  else if (consume_string("0x", 2, in)) {
     while((c = getc(in))) {
       if (isdigit(c)) {
         num = (num * 16) + (c - '0');
@@ -346,7 +336,7 @@ int consume_line(FILE *in) {
   return 1;
 }
 
-int consume_chars(const char* match, int len, FILE *in) {
+int consume_string(const char* match, int len, FILE *in) {
   const char *cursor = match;
 
   int  i;
@@ -369,5 +359,3 @@ int consume_chars(const char* match, int len, FILE *in) {
 
   return 1;
 }
-
-#endif

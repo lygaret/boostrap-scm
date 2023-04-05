@@ -1,276 +1,208 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <ctype.h>
-
 #include "scheme.h"
 
-#define INTERNED_TABLE_SIZE 97 /* prime! */
+/*
+  values are nan-boxed
 
-/* no gc, so will live forever */
-object *alloc_object(void) {
-  object *obj;
-  obj = malloc(sizeof(object));
+  ieee 754 double precision floats
+  sign | exp 11bits | fraction 52bits (most sig bit = quiet)
 
-  if (obj == NULL) {
-    fprintf(stderr, "out of memory!\n");
-    exit(1);
-  }
+  all ones  in exponent     = special case
+  all zeros in q + fraction = +- infinity
+  any bits in fraction      = NaN
 
-  return obj;
+  quiet bit is about errors, just preserve it
+  this is vaguely system dependent, but x86 and arm handle it this way
+
+  rest available for signalling inside a NaN
+
+  we need to preserve the ability to distinguish NaNs and infinities
+  which requires that we _not_ have all zeros
+  so type fields shouldn't use zeros
+
+  additionally, let's use 48bit pointers 
+  todo: this'll likely bite me in the ass for systems work
+
+  64 bit systems are 48 bits address spaces
+  52 - 48 = 4  possible bits for "native" pointer types
+          = 15 choices (0 is unavailable due to distinguishablity)
+
+  additonally, a pool of ids is set aside for _offsets_
+  we can build object pools, to alleviate pointer hopping
+
+  a pool is a (growable?) linear array of fixed size units
+  a "reference" is a index to a pool, and an offset within
+  pools can handle memory however they want to, but must have unique pool ids
+
+  a handle is a type + pool_id + offset
+  256 possible pool ids, this is more like page tables, than arbitrary makes
+
+  todo: how can we represent an _actual_ 64byte int?
+  definitely need (define flag 0xFFFFFFFFFFFFFFFF)
+
+  we can do the same thing we do for cons pools
+  a 64byte int (or arbitrary int maybe?) is a handle to an integer pool
+
+                s | 52 bits (exponent bits are elided)
+
+  +inf          0   00000000 .... 000000 00
+  -inf          1   00000000 .... 000000 00
+  NaN           0   00000000 .... 000000 01
+  NaNq          0   10000000 .... 000000 01
+                                          
+  PTR           1   0ttt address
+  malloc        1   0001 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  pool          1   0010 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  primitive     1   0011 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  etc.              0000 = -infinity / NaN
+                    1000 = NaNq
+
+                FFF      poolid           offset
+  HND           1   1ttt pppppppppppppppp oooooooooooooooooooooooooooooooo
+  cons pool     1   1000 pppppppppppppppp oooooooooooooooooooooooooooooooo
+  symbol pool   1   1001 pppppppppppppppp oooooooooooooooooooooooooooooooo
+  string pool   1   1010 pppppppppppppppp oooooooooooooooooooooooooooooooo
+  etc.              0000 = -infinity / NaN
+                    1000 = NaNq
+  
+  BOX           0   tttt aux              data
+  boolean       0   0001 0000000000000000 0000000000000000000000000000000b
+  character     0   0010 0000000000000000 000000000000000000000000cccccccc
+  integer       0   0011 0000000000000000 dddddddddddddddddddddddddddddddd
+  double        0   0100 0000000000000000 dddddddddddddddddddddddddddddddd
+  error         0   1110 0000000000000000 dddddddddddddddddddddddddddddddd
+  nil           0   1111 1111111111111111 11111111111111111111111111111111
+  etc.              0000 = +inifinity / NaN
+                    1000 = NaNq
+
+  7  pointer types, 48 bit address
+  7  handle types, 16bit pool id, 32bit offset
+  14 box types, max 7 byte payload per type
+ */
+
+value_t vnan   = (value_t)((uint64_t)0x7FF0000000000001LL);
+value_t vnanq  = (value_t)((uint64_t)0x7FF1000000000001LL);
+value_t vpinf  = (value_t)((uint64_t)0x7FF0000000000000LL);
+value_t vninf  = (value_t)((uint64_t)0xFFF0000000000000LL);
+
+value_t vnil   = (value_t)((uint64_t)0xFFFFFFFFFFFFFFFFLL);
+value_t vtrue  = (value_t)((uint64_t)0x7FF1000000000001LL);
+value_t vfalse = (value_t)((uint64_t)0x7FF1000000000000LL);
+
+/* comparisons */
+
+/** exact value equality */
+inline bool value_exact(value_t a, value_t b) {
+  return a.as_uint64 == b.as_uint64;
 }
 
-/* context holds "globals" */
-context *alloc_context(void) {
-  context *ctxt;
-  ctxt = malloc(sizeof(context));
-
-  ctxt->nil = alloc_object();
-  ctxt->nil->type = NIL;
-
-  ctxt->true_obj = alloc_object();
-  ctxt->true_obj->type = BOOLEAN;
-  ctxt->true_obj->data.byte.value = 1;
-
-  ctxt->false_obj = alloc_object();
-  ctxt->false_obj->type = BOOLEAN;
-  ctxt->false_obj->data.byte.value = 0;
-
-  ctxt->symbols_table = make_objvector(INTERNED_TABLE_SIZE, ctxt->nil);
-  ctxt->default_environment = ctxt->nil;
-  ctxt->current_environment = ctxt->nil;
-
-  ctxt->define_sym = make_symbol(ctxt, "define", 6);
-  ctxt->quote_sym = make_symbol(ctxt, "quote", 5);
-  ctxt->set_sym = make_symbol(ctxt, "set!", 4);
-
-  ctxt->cons_sym = make_symbol(ctxt, "cons", 4);
-  ctxt->car_sym = make_symbol(ctxt, "car", 3);
-  ctxt->cdr_sym = make_symbol(ctxt, "cdr", 3);
-
-  return ctxt;
+/** literal equality */
+inline bool is_vtruth(value_t v) {
+  return value_exact(v, vtrue);
 }
 
-object *environment_update(context *ctxt, object *env, object *key, object *value) {
-  return pair_cons(pair_cons(key, value), env);
+/** literal equality */
+inline bool is_vfalse(value_t v) {
+  return value_exact(v, vfalse);
 }
 
-object *environment_get(context *ctxt, object *env, object *key) {
-  object *cursor = env;
-  while (!is_nil(cursor)) {
-    if (key == pair_caar(cursor)) {
-      return pair_cdar(cursor);
-    }
-
-    cursor = pair_cdr(cursor);
-  }
-
-  return ctxt->nil;
+/** scheme-like predicate: everything but #f is truthy */
+inline bool is_truthy(value_t v) {
+  return !is_vfalse(v);
 }
 
-/* fixnums */
-
-object *make_fixnum(long value) {
-  object *obj;
-
-  obj = alloc_object();
-  obj->type = FIXNUM;
-  obj->data.fixnum.value = value;
-  return obj;
+/** scheme-like predicate: only #f is falsey */
+inline bool is_falsey(value_t v) {
+  return is_vfalse(v);
 }
 
-char is_fixnum(object *obj) {
-  return obj->type == FIXNUM;
+/* doubles */
+
+#define NOT_DOUBLE_MASK 0x7FF0000000000000
+#define NOT_NANINF_MASK 0x0009000000000000
+
+inline value_t make_double(vm_t* vm, double v) {
+  return (value_t)v;
 }
 
-/* booleans */
-
-char is_boolean(object *obj) {
-  return obj->type == BOOLEAN;
+inline double as_double(value_t v) {
+  return v.as_double;
 }
 
-char is_false(context *ctxt, object *obj) {
-  return obj == ctxt->false_obj;
+inline bool is_double(value_t v) {
+  return
+    ((v.as_uint64 & NOT_DOUBLE_MASK) != NOT_DOUBLE_MASK) ||
+    (((v.as_uint64 & NOT_NANINF_MASK) >> 48) == 0)       ||
+    (((v.as_uint64 & NOT_NANINF_MASK) >> 48) == 8);
 }
 
-char is_truthy(context *ctxt, object *obj) {
-  return !is_false(ctxt, obj);
+inline bool is_nan(value_t v) {
+  return value_exact(v, vnan) || value_exact(v, vnanq);
 }
 
-/* chars */
-
-object *make_character(char value) {
-  object *obj;
-
-  obj = alloc_object();
-  obj->type = CHARACTER;
-  obj->data.byte.value = value;
-  return obj;
+inline bool is_inf(value_t v) {
+  return value_exact(v, vpinf) || value_exact(v, vninf);
 }
 
-char is_character(object *obj) {
-  return obj->type == CHARACTER;
+/* boxed values (not exported) */
+
+#define SPECIAL_MASK    0xFFF0000000000000
+#define BOX_MASK        0x7FF0000000000000
+#define BOX_TYPE_MASK   0x000F000000000000
+#define BOX_AUX_MASK    0x0000FFFF00000000
+#define BOX_DATA_MASK   0x00000000FFFFFFFF
+
+static inline value_t make_boxed(box_type_t type, uint16_t aux, uint32_t value) {
+  value_t v;
+  v.as_uint64 = BOX_MASK   |
+    ((uint64_t)type << 48) |
+    ((uint64_t)aux << 32)  |
+    ((uint64_t)value);
+
+  return v;
 }
 
-/* strings */
-
-object *make_string(char *value, int len) {
-  object *obj;
-
-  obj = alloc_object();
-  obj->type = STRING;
-  obj->data.string.length = len;
-  obj->data.string.value = malloc(len);
-  if (obj->data.string.value == NULL) {
-    fprintf(stderr, "out of memory!\n");
-    exit(1);
-  }
-  strncpy(obj->data.string.value, value, len);
-  return obj;
+static inline bool is_boxed(box_type_t type, value_t v) {
+  uint64_t type_mask = (uint64_t)type << 48;
+  return (v.as_uint64 & (SPECIAL_MASK | BOX_TYPE_MASK)) == (BOX_MASK | type_mask);
 }
 
-int is_string(object *obj) {
-  return obj->type == STRING;
+static inline box_type_t boxed_type(value_t v) {
+  return ((box_type_t)((v.as_uint64 & BOX_TYPE_MASK) >> 48));
 }
 
-/* pairs */
-
-object *make_pair(object *car, object *cdr) {
-  object *obj;
-
-  obj = alloc_object();
-  obj->type = PAIR;
-  obj->data.pair.car = car;
-  obj->data.pair.cdr = cdr;
-
-  return obj;
+static inline uint16_t boxed_aux(value_t v) {
+  return ((uint16_t)((v.as_uint64 & BOX_AUX_MASK) >> 32));
 }
 
-char is_pair(object *obj) {
-  return obj->type == PAIR;
+static inline uint32_t boxed_data(value_t v) {
+  return (uint32_t)(v.as_uint64 & BOX_DATA_MASK);
 }
 
-char is_nil(object *obj) {
-  return obj->type == NIL;
+/* integers */
+
+inline value_t make_integer(vm_t* vm, uint32_t value) {
+  return make_boxed(BOX_INTEGER, 0, value);
 }
 
-object *pair_car(object *obj) {
-  return obj->data.pair.car;
+inline bool is_integer(value_t v) {
+  return is_boxed(BOX_INTEGER, v);
+}
+  
+inline uint32_t as_integer(value_t v) {
+  return boxed_data(v);
 }
 
-void pair_set_car(object *obj, object *val) {
-  obj->data.pair.car = val; 
+inline value_t make_error(vm_t* vm, uint32_t code) {
+  return make_boxed(BOX_ERROR, 0, code);
 }
 
-object *pair_cdr(object *obj) {
-  return obj->data.pair.cdr;
+inline bool is_nil(value_t v) {
+  return value_exact(v, vnil);
 }
 
-void pair_set_cdr(object *obj, object *val) {
-  obj->data.pair.cdr = val; 
-}
+#define PTR_MASK        0xFFF0000000000000
+#define PTR_TYPE_MASK   0x000F000000000000
+#define PTR_ADDR_MASK   0x0000FFFFFFFFFFFF
 
-/* obj vector | linear array of object */
-
-object* make_objvector(int size, object *fill) {
-  int i;
-  object*  obj;
-  object** vec;
-
-  vec = malloc(size * sizeof(object*));
-  if (vec == NULL) {
-    fprintf(stderr, "out of memory!\n");
-    exit(1);
-  }
-
-  obj = alloc_object();
-  obj->type = OBJVECTOR;
-  obj->data.objvector.size = size;
-  obj->data.objvector.head = vec;
-
-  for (i = 0; i < size; i++) {
-    obj->data.objvector.head[i] = fill;
-  }
-
-  return obj;
-}
-
-object* objvector_get(object* obj, int index) {
-  if (index < 0 || index >= obj->data.objvector.size) {
-    fprintf(stderr, "out of bounds!");
-    exit(1);
-  }
-
-  return obj->data.objvector.head[index];
-}
-
-void objvector_set(object* obj, int index, object* value) {
-  if (index < 0 || index >= obj->data.objvector.size) {
-    fprintf(stderr, "out of bounds!");
-    exit(1);
-  }
-
-  obj->data.objvector.head[index] = value;
-}
-
-/* interned strings | easy hash table, built on objvector */
-
-int intern_hash(char *value, int len, int table_size) {
-  unsigned int i;
-  unsigned int hash = 0;
-  for (i = 0; i < len; i++) {
-    hash = (hash << 5) + value[i];
-  }
-
-  return hash % table_size;
-}
-
-int is_symbol(object *obj) {
-  return obj->type == SYMBOL;
-}
-
-object *make_symbol(context *ctxt, char *value, int len) { 
-  object *obj, *pair, *car, *cdr, *table;
-  int hash;
-
-  table = ctxt->symbols_table;
-  hash  = intern_hash(value, len, table->data.objvector.size);
-  pair  = table->data.objvector.head[hash];
-
-  if (pair == ctxt->nil) {
-    /* nothing hashed here yet, so set the value */
-    obj = make_string(value, len);
-    obj->type = SYMBOL;
-
-    pair = make_pair(obj, ctxt->nil);
-    objvector_set(table, hash, pair);
-
-    return obj;
-  }
-  else {
-    while (1) {
-      car = pair_car(pair);
-      cdr = pair_cdr(pair);
-
-      if (is_symbol(car) && 
-          car->data.symbol.length == len &&
-          strncmp(car->data.string.value, value, len) == 0) {
-        /* found it */
-        return car;
-      }
-    
-      if (is_nil(cdr)) {
-        /* add it */
-        obj = make_string(value, len);
-        obj->type = SYMBOL;
-
-        cdr = make_pair(obj, ctxt->nil);
-        pair_set_cdr(pair, cdr);
-        
-        return obj;
-      }
-
-      pair = cdr;
-    }
-  }
-}
+#define HND_ROOT_MASK   0x0000FFFF00000000
+#define HND_OFFSET_MASK 0x00000000FFFFFFFF

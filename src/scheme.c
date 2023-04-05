@@ -151,12 +151,18 @@ inline bool is_inf(value_t v) {
 #define BOX_AUX_MASK    0x0000FFFF00000000
 #define BOX_DATA_MASK   0x00000000FFFFFFFF
 
-static inline value_t make_boxed(box_type_t type, uint16_t aux, uint32_t value) {
+typedef union box_data {
+  float    as_float;
+  int32_t  as_int32;
+  uint32_t as_uint32;
+} box_data_t;
+
+static inline value_t make_boxed(box_type_t type, uint16_t aux, box_data_t value) {
   value_t v;
   v.as_uint64 = BOX_MASK   |
     ((uint64_t)type << 48) |
     ((uint64_t)aux << 32)  |
-    ((uint64_t)value);
+    ((uint64_t)value.as_uint32);
 
   return v;
 }
@@ -174,14 +180,14 @@ static inline uint16_t boxed_aux(value_t v) {
   return ((uint16_t)((v.as_uint64 & BOX_AUX_MASK) >> 32));
 }
 
-static inline uint32_t boxed_data(value_t v) {
-  return (uint32_t)(v.as_uint64 & BOX_DATA_MASK);
+static inline box_data_t boxed_data(value_t v) {
+  return (box_data_t)((uint32_t)(v.as_uint64 & BOX_DATA_MASK));
 }
 
 /* integers */
 
 inline value_t make_integer(vm_t* vm, uint32_t value) {
-  return make_boxed(BOX_INTEGER, 0, value);
+  return make_boxed(BOX_INTEGER, 0, (box_data_t)value);
 }
 
 inline bool is_integer(value_t v) {
@@ -189,11 +195,39 @@ inline bool is_integer(value_t v) {
 }
   
 inline uint32_t as_integer(value_t v) {
-  return boxed_data(v);
+  return boxed_data(v).as_uint32;
+}
+
+/* floats */
+
+inline value_t make_float(vm_t* vm, float value) {
+  return make_boxed(BOX_FLOAT, 0, (box_data_t)value);
+}
+
+inline bool is_float(value_t v) {
+  return is_boxed(BOX_FLOAT, v);
+}
+
+inline float as_float(value_t v) {
+  return boxed_data(v).as_float;
+}
+
+/* chars */
+
+inline value_t make_character(vm_t* vm, char value) {
+  return make_boxed(BOX_CHARACTER, 0, (box_data_t)(uint32_t)value);
+}
+
+inline bool is_character(value_t v) {
+  return is_boxed(BOX_CHARACTER, v);
+}
+
+inline char as_character(value_t v) {
+  return (char)boxed_data(v).as_uint32;
 }
 
 inline value_t make_error(vm_t* vm, uint32_t code) {
-  return make_boxed(BOX_ERROR, 0, code);
+  return make_boxed(BOX_ERROR, 0, (box_data_t)code);
 }
 
 inline bool is_nil(value_t v) {

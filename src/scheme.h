@@ -38,7 +38,7 @@ typedef enum {
   BOX_BOOLEAN,
   BOX_CHARACTER,
   BOX_INTEGER,
-  BOX_DOUBLE,
+  BOX_FLOAT,
 
   BOX_ERROR = 0xE,
   BOX_NIL   = 0xF

@@ -4,186 +4,176 @@
 #include <stdlib.h>
 
 #include "scheme.h"
-#ifdef exclude_plz
 
 #define BUFFER_MAX 2048
 
 /* input stream */
 
-char peek(FILE *in);
+static char peek(FILE *in);
+static bool is_delimiter(char c);
 
-bool consume_ws(FILE *in);
-bool consume_line(FILE *in);
+static void consume_ws(FILE *in);
+static void consume_line(FILE *in);
 
-bool consume_char(const char c, FILE *in);
-bool consume_chars(const char* match, int len, FILE *in);
+static bool try_consume_char(const char c, FILE *in);
+static bool try_consume_chars(const char* match, int len, FILE *in);
 
 /* reader */
 
-int is_delimiter(char c);
+static value_t read_integer(vm_t *vm, FILE *in);
+static value_t read_slashchar(vm_t *vm, FILE *in);
+static value_t read_macrochar(vm_t *vm, FILE *in);
 
-value_t read_integer(vm_t *vm, FILE *in);
-
-/* object *read_macrochar(context *ctxt, FILE *in); */
-/* object *read_pair(context *ctxt, FILE *in); */
-/* object *read_slashchar(context *ctxt, FILE *in); */
-/* object *read_string(context *ctxt, FILE *in); */
-/* object *read_symbol(context *ctxt, FILE *in); */
-/* object *read_objvector(context *ctxt, FILE *in); */
+/* object *read_pair(vm_t *vm, FILE *in); */
+/* object *read_string(vm_t *vm, FILE *in); */
+/* object *read_symbol(vm_t *vm, FILE *in); */
+/* object *read_objvector(vm_t *vm, FILE *in); */
 
 value_t read(vm_t *vm, FILE *in) {
   value_t v;
 
-  char c;
-  object *out = 0;
-
   consume_ws(in);
+  char c = getc(in);
 
-  c = getc(in);
   if (c == EOF) {
-    fprintf(stderr, "bye");
-    exit(0);
+    v = make_error(vm, __LINE__);
   }
-  else if (c == '(') {
-    out = read_pair(ctxt, in);
-  }
-  else if (c == '\'') {
-    out = read(ctxt, in);
-    out = make_pair(ctxt->quote_sym, out);
-  }
+  /* else if (c == '(') { */
+  /*   out = read_pair(vm, in); */
+  /* } */
+  /* else if (c == '\'') { */
+  /*   out = read(vm, in); */
+  /*   out = make_pair(vm->quote_sym, out); */
+  /* } */
   else if (c == '#') {
-    out = read_macrochar(ctxt, in);
+    v = read_macrochar(vm, in);
   }
   else if (c == '\\') {
-    out = read_slashchar(ctxt, in);
+    v = read_slashchar(vm, in);
   }
-  else if (c == '"') {
-    out = read_string(ctxt, in);
-  }
+  /* else if (c == '"') { */
+  /*   out = read_string(vm, in); */
+  /* } */
   else if (isdigit(c)) {
     ungetc(c, in);
-    out = read_fixnum(ctxt, in);
+    v = read_integer(vm, in);
   }
   else {
-    ungetc(c, in);
-    out = read_symbol(ctxt, in);
+    /* ungetc(c, in); */
+    /* out = read_symbol(vm, in); */
+    v = make_error(vm, __LINE__);
   }
 
   /* require a delimiter after input */
   if (is_delimiter(peek(in))) {
-    return out;
+    return v;
   }
   else {
-    fprintf(stderr, "object not followed by a delimeter!\n");
-    exit(1);
+    return make_error(vm, __LINE__);
   }
 }
 
 /* '#' has already been read */
-object *read_macrochar(context *ctxt, FILE *in) {
-  int c;
-
+value_t read_macrochar(vm_t *vm, FILE *in) {
+  char c;
   switch(c = getc(in)) {
   case 't':
-    return ctxt->true_obj;
+    return vtrue;
 
   case 'f':
-    return ctxt->false_obj;
+    return vfalse;
 
-  case '[':
-    return read_objvector(ctxt, in);
+  /* case '[': */
+  /*   return read_objvector(vm, in); */
 
   default:
-    fprintf(stderr, "(macrochar) bad input, unexpected '%c'\n", c);
-    exit(1);
+    return make_error(vm, __LINE__);
   }
 }
 
 /* '\' has already been read */
-object *read_slashchar(context *ctxt, FILE *in) {
-  int c;
-
-  if (consume_chars("newline", 7, in)) {
-    return make_character('\n');
+value_t read_slashchar(vm_t *vm, FILE *in) {
+  if (try_consume_chars("newline", 7, in)) {
+    return make_character(vm, '\n');
   }
-  else if (consume_chars("tab", 3, in)) {
-    return make_character('\t');
+  else if (try_consume_chars("tab", 3, in)) {
+    return make_character(vm, '\t');
   }
-  else if (consume_chars("space", 5, in)) {
-    return make_character(' ');
+  else if (try_consume_chars("space", 5, in)) {
+    return make_character(vm, ' ');
   }
-  else if (consume_chars("backspace", 9, in)) {
-    return make_character('\b');
+  else if (try_consume_chars("backspace", 9, in)) {
+    return make_character(vm, '\b');
   }
   else {
-    c = getc(in);
-    return make_character(c);
+    char c = getc(in);
+    return make_character(vm, c);
   }
 }
 
 /* '"' has already been read */
-object *read_string(context *ctxt, FILE *in) {
-  char c;
-  char buffer[BUFFER_MAX];
-  int len = 0;
+/* object *read_string(vm_t *vm, FILE *in) { */
+/*   char c; */
+/*   char buffer[BUFFER_MAX]; */
+/*   int len = 0; */
 
-  while((c = getc(in)) != '"') {
-    if (c == EOF) {
-      fprintf(stderr, "unterminated string literal\n");
-      exit(1);
-    }
+/*   while((c = getc(in)) != '"') { */
+/*     if (c == EOF) { */
+/*       fprintf(stderr, "unterminated string literal\n"); */
+/*       exit(1); */
+/*     } */
 
-    if (c == '\\') {
-      c = getc(in);
-      if (c == 'n') {
-        c = '\n';
-      } else if (c == 't') {
-        c = '\t';
-      }
-    }
+/*     if (c == '\\') { */
+/*       c = getc(in); */
+/*       if (c == 'n') { */
+/*         c = '\n'; */
+/*       } else if (c == 't') { */
+/*         c = '\t'; */
+/*       } */
+/*     } */
 
-    if (len < BUFFER_MAX - 1) {
-      buffer[len++] = c;
-    }
-    else {
-      fprintf(stderr, "string too long, max length is %d", BUFFER_MAX);
-      exit(1);
-    }
-  }
+/*     if (len < BUFFER_MAX - 1) { */
+/*       buffer[len++] = c; */
+/*     } */
+/*     else { */
+/*       fprintf(stderr, "string too long, max length is %d", BUFFER_MAX); */
+/*       exit(1); */
+/*     } */
+/*   } */
   
-  buffer[len++] = '\0';
-  return make_string(buffer, len);
-}
+/*   buffer[len++] = '\0'; */
+/*   return make_string(buffer, len); */
+/* } */
 
 /* '#[' has already been consumed */
 /* read as pairs, convert to vector once we know the length */
-object *read_objvector_recur(context *ctxt, FILE *in, int currlength) {
-  object *vector;
-  object *next_obj;
+/* object *read_objvector_recur(vm_t *vm, FILE *in, int currlength) { */
+/*   object *vector; */
+/*   object *next_obj; */
 
-  consume_ws(in);
-  if (consume_char(']', in)) {
-    /* we hit the bottom, we know the length */
-    return make_objvector(currlength, ctxt->nil);
-  }
+/*   consume_ws(in); */
+/*   if (try_consume_char(']', in)) { */
+/*     /\* we hit the bottom, we know the length *\/ */
+/*     return make_objvector(currlength, vm->nil); */
+/*   } */
 
-  next_obj = read(ctxt, in);
-  vector   = read_objvector_recur(ctxt, in, currlength + 1);
+/*   next_obj = read(vm, in); */
+/*   vector   = read_objvector_recur(vm, in, currlength + 1); */
 
-  objvector_set(vector, currlength, next_obj);
-  return vector;
-}
+/*   objvector_set(vector, currlength, next_obj); */
+/*   return vector; */
+/* } */
 
-object *read_objvector(context *ctxt, FILE *in) {
-  return read_objvector_recur(ctxt, in, 0);
-}
+/* object *read_objvector(vm_t *vm, FILE *in) { */
+/*   return read_objvector_recur(vm, in, 0); */
+/* } */
 
-object *read_fixnum(context *ctxt, FILE *in) {
+value_t read_integer(vm_t *vm, FILE *in) {
   char c;
   long num = 0;
 
   /* consume binary strings */
-  if (consume_chars("0b", 2, in)) {
+  if (try_consume_chars("0b", 2, in)) {
     while((c = getc(in))) {
       if (c == '0') {
         num = (num * 2);
@@ -201,7 +191,7 @@ object *read_fixnum(context *ctxt, FILE *in) {
   }
 
   /* consume hex strings */
-  else if (consume_chars("0x", 2, in)) {
+  else if (try_consume_chars("0x", 2, in)) {
     while((c = getc(in))) {
       if (isdigit(c)) {
         num = (num * 16) + (c - '0');
@@ -231,85 +221,108 @@ object *read_fixnum(context *ctxt, FILE *in) {
     ungetc(c, in);
   }
 
-  return make_fixnum(num);
+  return make_integer(vm, (uint32_t)num);
 }
 
-object *read_symbol(context *ctxt, FILE *in) {
-  char c;
-  char buffer[BUFFER_MAX];
-  int len = 0;
+/* object *read_symbol(vm_t *vm, FILE *in) { */
+/*   char c; */
+/*   char buffer[BUFFER_MAX]; */
+/*   int len = 0; */
 
-  while (1) {
-    c = getc(in);
-    if (is_delimiter(c) || isspace(c))
-      break;
+/*   while (1) { */
+/*     c = getc(in); */
+/*     if (is_delimiter(c) || isspace(c)) */
+/*       break; */
 
-    if (len < BUFFER_MAX - 1) {
-      buffer[len++] = c;
-    }
-    else {
-      fprintf(stderr, "string too long, max length is %d", BUFFER_MAX);
-      exit(1);
-    }
-  }
+/*     if (len < BUFFER_MAX - 1) { */
+/*       buffer[len++] = c; */
+/*     } */
+/*     else { */
+/*       fprintf(stderr, "string too long, max length is %d", BUFFER_MAX); */
+/*       exit(1); */
+/*     } */
+/*   } */
 
-  ungetc(c, in);
-  return make_symbol(ctxt, buffer, len);
-}
+/*   ungetc(c, in); */
+/*   return make_symbol(vm, buffer, len); */
+/* } */
 
-/* the opening paren has already been read */
-object *read_pair(context *ctxt, FILE *in) {
-  object *car_obj;
-  object *cdr_obj;
+/* /\* the opening paren has already been read *\/ */
+/* object *read_pair(vm_t *vm, FILE *in) { */
+/*   object *car_obj; */
+/*   object *cdr_obj; */
 
-  consume_ws(in);
-  if (consume_char(')', in)) {
-    /* closing paren means (), means nil */
-    return ctxt->nil;
-  }
+/*   consume_ws(in); */
+/*   if (try_consume_char(')', in)) { */
+/*     /\* closing paren means (), means nil *\/ */
+/*     return vm->nil; */
+/*   } */
 
-  car_obj = read(ctxt, in);
+/*   car_obj = read(vm, in); */
 
-  consume_ws(in);
-  if (consume_char('.', in)) {
-    /* improper list means explicit cdr, and explicit close paren */
-    cdr_obj = read(ctxt, in);
+/*   consume_ws(in); */
+/*   if (try_consume_char('.', in)) { */
+/*     /\* improper list means explicit cdr, and explicit close paren *\/ */
+/*     cdr_obj = read(vm, in); */
 
-    consume_ws(in);
-    if (!consume_char(')', in)) {
-      fprintf(stderr, "expecting ')' to close an improper list");
-      exit(1);
-    }
-  }
-  else {
-    /* proper list means implicit cdr, through recursion */
-    cdr_obj = read_pair(ctxt, in);
+/*     consume_ws(in); */
+/*     if (!try_consume_char(')', in)) { */
+/*       fprintf(stderr, "expecting ')' to close an improper list"); */
+/*       exit(1); */
+/*     } */
+/*   } */
+/*   else { */
+/*     /\* proper list means implicit cdr, through recursion *\/ */
+/*     cdr_obj = read_pair(vm, in); */
 
-  }
+/*   } */
 
-  return make_pair(car_obj, cdr_obj);
-}
+/*   return make_pair(car_obj, cdr_obj); */
+/* } */
 
 /* lexing helpers */
 
 char peek(FILE *in) {
-  int c;
-
-  c = getc(in);
+  char c = getc(in);
   ungetc(c, in);
+
   return c;
 }
 
-int is_delimiter(char c) {
-  return isspace(c) || c == EOF ||
-           c == '(' || c == ')' ||
-           c == '[' || c == ']' ||
-           c == '"' || c == ';' ;
+bool is_delimiter(char c) {
+  return
+    isspace(c) || c == EOF ||
+    c == '(' || c == ')' ||
+    c == '[' || c == ']' ||
+    c == '"' || c == ';' ;
 }
 
-int consume_char(char c, FILE *in) {
-  char inc;
-  inc = getc(in);
+void consume_ws(FILE *in) {
+  char c;
+  while ((c = getc(in)) != EOF) {
+    if (isspace(c)) {/* skip whitespace */
+      continue;
+    }
+    else if (c == ';') {/* skip comments (to the end of the line) */
+      consume_line(in);
+      continue;
+    }
+    else {/* otherwise, we didn't get whitespace, bounce */
+      ungetc(c, in);
+      break;
+    }
+  }
+}
+
+void consume_line(FILE *in) {
+  char c;
+  while ((c = getc(in)) != EOF) {
+    if (c == '\n') break;
+  }
+}
+
+bool try_consume_char(char c, FILE *in) {
+  char inc = getc(in);
   if (c != inc) {
     ungetc(inc, in);
   }
@@ -317,43 +330,10 @@ int consume_char(char c, FILE *in) {
   return c == inc;
 }
 
-int consume_ws(FILE *in) {
-  char c;
-  while ((c = getc(in)) != EOF) {
-    if (isspace(c)) {
-      /* skip whitespace */
-      continue;
-    }
-    else if (c == ';') {
-      /* skip comments (to the end of the line) */
-      consume_line(in);
-      continue;
-    }
-    else {
-      /* otherwise, we didn't get whitespace, bounce */
-      ungetc(c, in);
-      break;
-    }
-  }
-
-  return 1;
-}
-
-int consume_line(FILE *in) {
-  char c;
-  while ((c = getc(in)) != EOF && c != '\n') {}
-
-  return 1;
-}
-
-int consume_chars(const char* match, int len, FILE *in) {
+bool try_consume_chars(const char* match, int len, FILE *in) {
   const char *cursor = match;
-
-  int  i;
-  char c;
-
-  for (i = 0; i < len; i++, cursor++) {
-    c = getc(in);
+  for (int i = 0; i < len; i++, cursor++) {
+    char c = getc(in);
 
     /* put the _last_ character read back on,
        and then undo any match characters we've already read */
@@ -363,11 +343,9 @@ int consume_chars(const char* match, int len, FILE *in) {
         ungetc(*cursor, in);
       }
 
-      return 0;
+      return false;
     }
   }
 
-  return 1;
+  return true;
 }
-
-#endif

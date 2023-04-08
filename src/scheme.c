@@ -1,3 +1,5 @@
+#include <stdlib.h>
+#include <string.h>
 #include "scheme.h"
 
 /*
@@ -77,7 +79,15 @@
   7  pointer types, 48 bit address
   7  handle types, 16bit pool id, 32bit offset
   14 box types, max 7 byte payload per type
- */
+
+  cons pool:
+    linear array of value_t
+    car cdr car cdr car cdr
+
+  initialized with all nil (write all ones to the whole block)
+*/
+
+/* fixed known globals; extern'd in header */ 
 
 value_t vnan   = (value_t)((uint64_t)0x7FF0000000000001LL);
 value_t vnanq  = (value_t)((uint64_t)0x7FF1000000000001LL);
@@ -87,6 +97,39 @@ value_t vninf  = (value_t)((uint64_t)0xFFF0000000000000LL);
 value_t vnil   = (value_t)((uint64_t)0xFFFFFFFFFFFFFFFFLL);
 value_t vtrue  = (value_t)((uint64_t)0x7FF1000000000001LL);
 value_t vfalse = (value_t)((uint64_t)0x7FF1000000000000LL);
+
+/* pools and the ctxt */
+
+context_p alloc_context(int initial_size) {
+  context_p ctxt = malloc(sizeof(context_t));
+
+  int size      = initial_size * 2 * sizeof(value_t);
+  value_t *pool = malloc(size);
+  if (pool == NULL) {
+    fprintf(stderr, "out of memory!\n");
+    exit(1);
+  }
+
+  /* initialize to nil (all 0xFF) */
+  memset(pool, 0xFF, size);
+  
+  ctxt->cons_pool_size  = 1;
+  ctxt->cons_pool_limit = initial_size;
+  ctxt->cons_pool_ptr   = pool;
+  ctxt->cons_free_list  = make_handle(ctxt, HND_CONS, 0, 0);
+
+  return ctxt;
+}
+
+static value_t alloc_cons(context_p ctxt, value_t car, value_t cdr) {
+  int index = ctxt->cons_pool_size;
+  
+  ctxt->cons_pool_ptr[index]     = car;
+  ctxt->cons_pool_ptr[index + 1] = cdr;
+  ctxt->cons_pool_size          += 2;
+
+  return make_handle(ctxt, HND_CONS, 0, index);
+}
 
 /* comparisons */
 
@@ -120,7 +163,7 @@ inline bool is_falsey(value_t v) {
 #define NOT_DOUBLE_MASK 0x7FF0000000000000
 #define NOT_NANINF_MASK 0x0009000000000000
 
-inline value_t make_double(vm_t* vm, double v) {
+inline value_t make_double(context_p, double v) {
   return (value_t)v;
 }
 
@@ -143,50 +186,9 @@ inline bool is_inf(value_t v) {
   return value_exact(v, vpinf) || value_exact(v, vninf);
 }
 
-/* boxed values (not exported) */
-
-#define SPECIAL_MASK    0xFFF0000000000000
-#define BOX_MASK        0x7FF0000000000000
-#define BOX_TYPE_MASK   0x000F000000000000
-#define BOX_AUX_MASK    0x0000FFFF00000000
-#define BOX_DATA_MASK   0x00000000FFFFFFFF
-
-typedef union box_data {
-  float    as_float;
-  int32_t  as_int32;
-  uint32_t as_uint32;
-} box_data_t;
-
-static inline value_t make_boxed(box_type_t type, uint16_t aux, box_data_t value) {
-  value_t v;
-  v.as_uint64 = BOX_MASK   |
-    ((uint64_t)type << 48) |
-    ((uint64_t)aux << 32)  |
-    ((uint64_t)value.as_uint32);
-
-  return v;
-}
-
-static inline bool is_boxed(box_type_t type, value_t v) {
-  uint64_t type_mask = (uint64_t)type << 48;
-  return (v.as_uint64 & (SPECIAL_MASK | BOX_TYPE_MASK)) == (BOX_MASK | type_mask);
-}
-
-static inline box_type_t boxed_type(value_t v) {
-  return ((box_type_t)((v.as_uint64 & BOX_TYPE_MASK) >> 48));
-}
-
-static inline uint16_t boxed_aux(value_t v) {
-  return ((uint16_t)((v.as_uint64 & BOX_AUX_MASK) >> 32));
-}
-
-static inline box_data_t boxed_data(value_t v) {
-  return (box_data_t)((uint32_t)(v.as_uint64 & BOX_DATA_MASK));
-}
-
 /* integers */
 
-inline value_t make_integer(vm_t* vm, uint32_t value) {
+inline value_t make_integer(context_p, uint32_t value) {
   return make_boxed(BOX_INTEGER, 0, (box_data_t)value);
 }
 
@@ -200,7 +202,7 @@ inline uint32_t as_integer(value_t v) {
 
 /* floats */
 
-inline value_t make_float(vm_t* vm, float value) {
+inline value_t make_float(context_p, float value) {
   return make_boxed(BOX_FLOAT, 0, (box_data_t)value);
 }
 
@@ -214,7 +216,7 @@ inline float as_float(value_t v) {
 
 /* chars */
 
-inline value_t make_character(vm_t* vm, char value) {
+inline value_t make_character(context_p, char value) {
   return make_boxed(BOX_CHARACTER, 0, (box_data_t)(uint32_t)value);
 }
 
@@ -226,17 +228,145 @@ inline char as_character(value_t v) {
   return (char)boxed_data(v).as_uint32;
 }
 
-inline value_t make_error(vm_t* vm, uint32_t code) {
+inline value_t make_error(context_p, uint32_t code) {
   return make_boxed(BOX_ERROR, 0, (box_data_t)code);
+}
+
+/* strings */
+
+/* symbols */
+
+/* errors */
+
+/* cons cells */
+
+inline value_t make_cons(context_p ctxt, value_t car, value_t cdr) {
+  return alloc_cons(ctxt, car, cdr);
+}
+
+inline bool is_cons(value_t v) {
+  return is_handle(HND_CONS, v);
 }
 
 inline bool is_nil(value_t v) {
   return value_exact(v, vnil);
 }
 
+inline value_t car(context_p ctxt, value_t hnd) {
+  int index = handle_offset(hnd);
+  return ctxt->cons_pool_ptr[index];
+}
+
+inline value_t cdr(context_p ctxt, value_t hnd) {
+  int index = handle_offset(hnd);
+  return ctxt->cons_pool_ptr[index + 1];
+}
+
+inline void set_car(context_p ctxt, value_t hnd, value_t v) {
+  int index = handle_offset(hnd);
+  ctxt->cons_pool_ptr[index] = v;
+}
+
+inline void set_cdr(context_p ctxt, value_t hnd, value_t v) {
+  int index = handle_offset(hnd);
+  ctxt->cons_pool_ptr[index + 1] = v;
+}
+
+/* buffers */
+
+/* vectors */
+
+/* procs */
+
+/* boxes */
+
+#define SPECIAL_MASK    0xFFF0000000000000
+#define BOX_MASK        0x7FF0000000000000
+#define BOX_TYPE_MASK   0x000F000000000000
+#define BOX_AUX_MASK    0x0000FFFF00000000
+#define BOX_DATA_MASK   0x00000000FFFFFFFF
+
+inline value_t make_boxed(box_type_t type, uint16_t aux, box_data_t value) {
+  value_t v;
+  v.as_uint64 = BOX_MASK   |
+    ((uint64_t)type << 48) |
+    ((uint64_t)aux << 32)  |
+    ((uint64_t)value.as_uint32);
+
+  return v;
+}
+
+inline bool is_boxed(box_type_t type, value_t v) {
+  uint64_t type_mask = (uint64_t)type << 48;
+  return (v.as_uint64 & (SPECIAL_MASK | BOX_TYPE_MASK)) == (BOX_MASK | type_mask);
+}
+
+inline box_type_t boxed_type(value_t v) {
+  return ((box_type_t)((v.as_uint64 & BOX_TYPE_MASK) >> 48));
+}
+
+inline uint16_t boxed_aux(value_t v) {
+  return ((uint16_t)((v.as_uint64 & BOX_AUX_MASK) >> 32));
+}
+
+inline box_data_t boxed_data(value_t v) {
+  return (box_data_t)((uint32_t)(v.as_uint64 & BOX_DATA_MASK));
+}
+
+/* arbitrary pointers */
+
 #define PTR_MASK        0xFFF0000000000000
 #define PTR_TYPE_MASK   0x000F000000000000
 #define PTR_ADDR_MASK   0x0000FFFFFFFFFFFF
 
-#define HND_ROOT_MASK   0x0000FFFF00000000
+value_t make_pointer(context_p, ptr_type_t type, void* addr) {
+  uint64_t as_int = (uint64_t)addr;
+
+  if ((as_int & PTR_ADDR_MASK) != as_int) {
+    fprintf(stderr, "unrepresentable address: %lx\nbailing!\n", as_int);
+    exit(1);
+  }
+  
+  value_t v;
+  v.as_uint64 = PTR_MASK | as_int | ((uint64_t)(type & PTR_TYPE_MASK) << 48);
+
+  return v;
+}
+
+inline bool is_pointer(ptr_type_t type, value_t v) {
+  uint64_t type_mask = (uint64_t)type << 48;
+  return (v.as_uint64 & (PTR_MASK | (type_mask & PTR_TYPE_MASK))) == (PTR_MASK | type_mask);
+}
+
+inline ptr_type_t pointer_type(value_t v) {
+  return ((ptr_type_t)((v.as_uint64 & PTR_TYPE_MASK) >> 48));
+}
+
+inline void* pointer_addr(value_t v) {
+  return (void *)(v.as_uint64 & PTR_ADDR_MASK);
+}
+
+/* handles */
+
+#define HND_AUX_MASK   0x0000FFFF00000000
 #define HND_OFFSET_MASK 0x00000000FFFFFFFF
+
+inline value_t make_handle(context_p, hnd_type_t type, uint16_t aux, uint32_t offset) {
+  value_t v;
+  v.as_uint64 = PTR_MASK | offset | ((uint64_t)type << 48) | ((uint64_t)aux << 32);
+
+  return v;
+}
+
+inline bool is_handle(hnd_type_t type, value_t v) {
+  uint64_t type_mask = (uint64_t)type << 48;
+  return (v.as_uint64 & (PTR_MASK | (type_mask & PTR_TYPE_MASK))) == (PTR_MASK | type_mask);
+}
+
+inline uint16_t handle_aux(value_t v) {
+  return ((uint16_t)((v.as_uint64 & HND_AUX_MASK) >> 32));
+}
+
+inline uint32_t handle_offset(value_t v) {
+  return (uint32_t)(v.as_uint64 & HND_OFFSET_MASK);
+}

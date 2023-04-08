@@ -5,14 +5,26 @@
 int main (void) {
   printf("bootstrap scheme v0.01\nuse ctrl-d to exit.\n");
 
-  vm_t *vm = malloc(1);
   value_t v;
+  context_p ctxt = alloc_context(4096);
+
+  value_t a, b, c;
+
+  a = make_cons(ctxt, make_integer(ctxt, 1234), vnil);
+  a = make_cons(ctxt, make_integer(ctxt, 5678), a);
+  a = make_cons(ctxt, make_double(ctxt, 3.1415926), a);
+  a = make_cons(ctxt, make_integer(ctxt, 42), a);
+  a = make_cons(ctxt, make_cons(ctxt, make_integer(ctxt, 10), make_integer(ctxt, 20)), a);
+  
+  printf("test: ");
+  print(ctxt, a);
+  printf("\n");
 
   while (1) {
     printf("> ");
-    v = read(vm, stdin);
-    v = eval(vm, v);
-    print(vm, v);
+    v = read(ctxt, stdin);
+    v = eval(ctxt, v);
+    print(ctxt, v);
     printf("\n");
   }
 

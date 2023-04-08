@@ -20,48 +20,50 @@ static bool try_consume_chars(const char* match, int len, FILE *in);
 
 /* reader */
 
-static value_t read_integer(vm_t *vm, FILE *in);
-static value_t read_slashchar(vm_t *vm, FILE *in);
-static value_t read_macrochar(vm_t *vm, FILE *in);
+static value_t read_integer(context_p ctxt, FILE *in);
+static value_t read_slashchar(context_p ctxt, FILE *in);
+static value_t read_macrochar(context_p ctxt, FILE *in);
+static value_t read_pair(context_p ctxt, FILE *in);
 
-/* object *read_pair(vm_t *vm, FILE *in); */
-/* object *read_string(vm_t *vm, FILE *in); */
-/* object *read_symbol(vm_t *vm, FILE *in); */
-/* object *read_objvector(vm_t *vm, FILE *in); */
+/* object *read_string(context_p ctxt, FILE *in); */
+/* object *read_symbol(context_p ctxt, FILE *in); */
+/* object *read_objvector(context_p ctxt, FILE *in); */
 
-value_t read(vm_t *vm, FILE *in) {
+value_t read(context_p ctxt, FILE *in) {
   value_t v;
 
   consume_ws(in);
   char c = getc(in);
 
   if (c == EOF) {
-    v = make_error(vm, __LINE__);
+    fprintf(stderr, "ok, bye\n");
+    exit(1);
   }
-  /* else if (c == '(') { */
-  /*   out = read_pair(vm, in); */
-  /* } */
+
+  if (c == '(') {
+    v = read_pair(ctxt, in);
+  }
   /* else if (c == '\'') { */
-  /*   out = read(vm, in); */
-  /*   out = make_pair(vm->quote_sym, out); */
+  /*   out = read(ctxt, in); */
+  /*   out = make_pair(ctxt->quote_sym, out); */
   /* } */
   else if (c == '#') {
-    v = read_macrochar(vm, in);
+    v = read_macrochar(ctxt, in);
   }
   else if (c == '\\') {
-    v = read_slashchar(vm, in);
+    v = read_slashchar(ctxt, in);
   }
   /* else if (c == '"') { */
-  /*   out = read_string(vm, in); */
+  /*   out = read_string(ctxt, in); */
   /* } */
   else if (isdigit(c)) {
     ungetc(c, in);
-    v = read_integer(vm, in);
+    v = read_integer(ctxt, in);
   }
   else {
     /* ungetc(c, in); */
-    /* out = read_symbol(vm, in); */
-    v = make_error(vm, __LINE__);
+    /* out = read_symbol(ctxt, in); */
+    v = make_error(ctxt, __LINE__);
   }
 
   /* require a delimiter after input */
@@ -69,12 +71,12 @@ value_t read(vm_t *vm, FILE *in) {
     return v;
   }
   else {
-    return make_error(vm, __LINE__);
+    return make_error(ctxt, __LINE__);
   }
 }
 
 /* '#' has already been read */
-value_t read_macrochar(vm_t *vm, FILE *in) {
+value_t read_macrochar(context_p ctxt, FILE *in) {
   char c;
   switch(c = getc(in)) {
   case 't':
@@ -84,35 +86,35 @@ value_t read_macrochar(vm_t *vm, FILE *in) {
     return vfalse;
 
   /* case '[': */
-  /*   return read_objvector(vm, in); */
+  /*   return read_objvector(ctxt, in); */
 
   default:
-    return make_error(vm, __LINE__);
+    return make_error(ctxt, __LINE__);
   }
 }
 
 /* '\' has already been read */
-value_t read_slashchar(vm_t *vm, FILE *in) {
+value_t read_slashchar(context_p ctxt, FILE *in) {
   if (try_consume_chars("newline", 7, in)) {
-    return make_character(vm, '\n');
+    return make_character(ctxt, '\n');
   }
   else if (try_consume_chars("tab", 3, in)) {
-    return make_character(vm, '\t');
+    return make_character(ctxt, '\t');
   }
   else if (try_consume_chars("space", 5, in)) {
-    return make_character(vm, ' ');
+    return make_character(ctxt, ' ');
   }
   else if (try_consume_chars("backspace", 9, in)) {
-    return make_character(vm, '\b');
+    return make_character(ctxt, '\b');
   }
   else {
     char c = getc(in);
-    return make_character(vm, c);
+    return make_character(ctxt, c);
   }
 }
 
 /* '"' has already been read */
-/* object *read_string(vm_t *vm, FILE *in) { */
+/* object *read_string(context_p ctxt, FILE *in) { */
 /*   char c; */
 /*   char buffer[BUFFER_MAX]; */
 /*   int len = 0; */
@@ -147,28 +149,28 @@ value_t read_slashchar(vm_t *vm, FILE *in) {
 
 /* '#[' has already been consumed */
 /* read as pairs, convert to vector once we know the length */
-/* object *read_objvector_recur(vm_t *vm, FILE *in, int currlength) { */
+/* object *read_objvector_recur(context_p ctxt, FILE *in, int currlength) { */
 /*   object *vector; */
 /*   object *next_obj; */
 
 /*   consume_ws(in); */
 /*   if (try_consume_char(']', in)) { */
 /*     /\* we hit the bottom, we know the length *\/ */
-/*     return make_objvector(currlength, vm->nil); */
+/*     return make_objvector(currlength, ctxt->nil); */
 /*   } */
 
-/*   next_obj = read(vm, in); */
-/*   vector   = read_objvector_recur(vm, in, currlength + 1); */
+/*   next_obj = read(ctxt, in); */
+/*   vector   = read_objvector_recur(ctxt, in, currlength + 1); */
 
 /*   objvector_set(vector, currlength, next_obj); */
 /*   return vector; */
 /* } */
 
-/* object *read_objvector(vm_t *vm, FILE *in) { */
-/*   return read_objvector_recur(vm, in, 0); */
+/* object *read_objvector(context_p ctxt, FILE *in) { */
+/*   return read_objvector_recur(ctxt, in, 0); */
 /* } */
 
-value_t read_integer(vm_t *vm, FILE *in) {
+value_t read_integer(context_p ctxt, FILE *in) {
   char c;
   long num = 0;
 
@@ -221,10 +223,10 @@ value_t read_integer(vm_t *vm, FILE *in) {
     ungetc(c, in);
   }
 
-  return make_integer(vm, (uint32_t)num);
+  return make_integer(ctxt, (uint32_t)num);
 }
 
-/* object *read_symbol(vm_t *vm, FILE *in) { */
+/* object *read_symbol(context_p ctxt, FILE *in) { */
 /*   char c; */
 /*   char buffer[BUFFER_MAX]; */
 /*   int len = 0; */
@@ -244,41 +246,40 @@ value_t read_integer(vm_t *vm, FILE *in) {
 /*   } */
 
 /*   ungetc(c, in); */
-/*   return make_symbol(vm, buffer, len); */
+/*   return make_symbol(ctxt, buffer, len); */
 /* } */
 
-/* /\* the opening paren has already been read *\/ */
-/* object *read_pair(vm_t *vm, FILE *in) { */
-/*   object *car_obj; */
-/*   object *cdr_obj; */
+/* the opening paren has already been read */
+value_t read_pair(context_p ctxt, FILE *in) {
+  value_t car_obj;
+  value_t cdr_obj;
 
-/*   consume_ws(in); */
-/*   if (try_consume_char(')', in)) { */
-/*     /\* closing paren means (), means nil *\/ */
-/*     return vm->nil; */
-/*   } */
+  consume_ws(in);
+  if (try_consume_char(')', in)) {
+    /* closing paren means (), means nil */
+    return vnil;
+  }
 
-/*   car_obj = read(vm, in); */
+  car_obj = read(ctxt, in);
 
-/*   consume_ws(in); */
-/*   if (try_consume_char('.', in)) { */
-/*     /\* improper list means explicit cdr, and explicit close paren *\/ */
-/*     cdr_obj = read(vm, in); */
+  consume_ws(in);
+  if (try_consume_char('.', in)) {
+    /* improper list means explicit cdr, and explicit close paren */
+    cdr_obj = read(ctxt, in);
 
-/*     consume_ws(in); */
-/*     if (!try_consume_char(')', in)) { */
-/*       fprintf(stderr, "expecting ')' to close an improper list"); */
-/*       exit(1); */
-/*     } */
-/*   } */
-/*   else { */
-/*     /\* proper list means implicit cdr, through recursion *\/ */
-/*     cdr_obj = read_pair(vm, in); */
+    consume_ws(in);
+    if (!try_consume_char(')', in)) {
+      fprintf(stderr, "expecting ')' to close an improper list");
+      exit(1);
+    }
+  }
+  else {
+    /* proper list means implicit cdr, through recursion */
+    cdr_obj = read_pair(ctxt, in);
+  }
 
-/*   } */
-
-/*   return make_pair(car_obj, cdr_obj); */
-/* } */
+  return make_cons(ctxt, car_obj, cdr_obj);
+}
 
 /* lexing helpers */
 

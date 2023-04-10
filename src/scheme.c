@@ -98,6 +98,28 @@ value_t vnil   = (value_t)((uint64_t)0xFFFFFFFFFFFFFFFFLL);
 value_t vtrue  = (value_t)((uint64_t)0x7FF1000000000001LL);
 value_t vfalse = (value_t)((uint64_t)0x7FF1000000000000LL);
 
+// local forward decls
+
+/* boxes */
+static value_t    make_boxed(box_type_t type, uint16_t aux, box_data_t value);
+static bool       is_boxed(box_type_t type, value_t v);
+static box_type_t boxed_type(value_t v);
+static uint16_t   boxed_aux(value_t v);
+static box_data_t boxed_data(value_t v);
+
+/* pointers */
+static value_t    make_pointer(context_p ctxt, ptr_type_t type, void* addr);
+static bool       is_pointer(ptr_type_t type, value_t v);
+static ptr_type_t pointer_type(value_t v);
+static void*      pointer_addr(value_t v);
+
+/* handles */
+static value_t    make_handle(context_p ctxt, hnd_type_t type, uint16_t aux, uint32_t offset);
+static bool       is_handle(hnd_type_t type, value_t v);
+static hnd_type_t handle_type(value_t v);
+static uint16_t   handle_aux(value_t v);
+static uint32_t   handle_offset(value_t v);
+
 /* pools and the ctxt */
 
 context_p alloc_context(int initial_size) {
@@ -112,11 +134,22 @@ context_p alloc_context(int initial_size) {
 
   /* initialize to nil (all 0xFF) */
   memset(pool, 0xFF, size);
-  
+
   ctxt->cons_pool_size  = 1;
   ctxt->cons_pool_limit = initial_size;
   ctxt->cons_pool_ptr   = pool;
   ctxt->cons_free_list  = make_handle(ctxt, HND_CONS, 0, 0);
+
+  size = initial_size;
+  char *buffer = malloc(size);
+  if (buffer == NULL) {
+    fprintf(stderr, "out of memory!\n");
+    exit(1);
+  }
+  
+  ctxt->string_buffer_limit  = initial_size;
+  ctxt->string_buffer_offset = 0;
+  ctxt->string_buffer_ptr    = buffer;
 
   return ctxt;
 }
@@ -134,27 +167,27 @@ static value_t alloc_cons(context_p ctxt, value_t car, value_t cdr) {
 /* comparisons */
 
 /** exact value equality */
-inline bool value_exact(value_t a, value_t b) {
+bool value_exact(value_t a, value_t b) {
   return a.as_uint64 == b.as_uint64;
 }
 
 /** literal equality */
-inline bool is_vtruth(value_t v) {
+bool is_vtruth(value_t v) {
   return value_exact(v, vtrue);
 }
 
 /** literal equality */
-inline bool is_vfalse(value_t v) {
+bool is_vfalse(value_t v) {
   return value_exact(v, vfalse);
 }
 
 /** scheme-like predicate: everything but #f is truthy */
-inline bool is_truthy(value_t v) {
+bool is_truthy(value_t v) {
   return !is_vfalse(v);
 }
 
 /** scheme-like predicate: only #f is falsey */
-inline bool is_falsey(value_t v) {
+bool is_falsey(value_t v) {
   return is_vfalse(v);
 }
 
@@ -163,76 +196,105 @@ inline bool is_falsey(value_t v) {
 #define NOT_DOUBLE_MASK 0x7FF0000000000000
 #define NOT_NANINF_MASK 0x0009000000000000
 
-inline value_t make_double(context_p, double v) {
+value_t make_double(context_p, double v) {
   return (value_t)v;
 }
 
-inline double as_double(value_t v) {
+double as_double(value_t v) {
   return v.as_double;
 }
 
-inline bool is_double(value_t v) {
+bool is_double(value_t v) {
   return
     ((v.as_uint64 & NOT_DOUBLE_MASK) != NOT_DOUBLE_MASK) ||
     (((v.as_uint64 & NOT_NANINF_MASK) >> 48) == 0)       ||
     (((v.as_uint64 & NOT_NANINF_MASK) >> 48) == 8);
 }
 
-inline bool is_nan(value_t v) {
+bool is_nan(value_t v) {
   return value_exact(v, vnan) || value_exact(v, vnanq);
 }
 
-inline bool is_inf(value_t v) {
+bool is_inf(value_t v) {
   return value_exact(v, vpinf) || value_exact(v, vninf);
 }
 
 /* integers */
 
-inline value_t make_integer(context_p, uint32_t value) {
+value_t make_integer(context_p, uint32_t value) {
   return make_boxed(BOX_INTEGER, 0, (box_data_t)value);
 }
 
-inline bool is_integer(value_t v) {
+bool is_integer(value_t v) {
   return is_boxed(BOX_INTEGER, v);
 }
   
-inline uint32_t as_integer(value_t v) {
+uint32_t as_integer(value_t v) {
   return boxed_data(v).as_uint32;
 }
 
 /* floats */
 
-inline value_t make_float(context_p, float value) {
+value_t make_float(context_p, float value) {
   return make_boxed(BOX_FLOAT, 0, (box_data_t)value);
 }
 
-inline bool is_float(value_t v) {
+bool is_float(value_t v) {
   return is_boxed(BOX_FLOAT, v);
 }
 
-inline float as_float(value_t v) {
+float as_float(value_t v) {
   return boxed_data(v).as_float;
 }
 
 /* chars */
 
-inline value_t make_character(context_p, char value) {
+value_t make_character(context_p, char value) {
   return make_boxed(BOX_CHARACTER, 0, (box_data_t)(uint32_t)value);
 }
 
-inline bool is_character(value_t v) {
+bool is_character(value_t v) {
   return is_boxed(BOX_CHARACTER, v);
 }
 
-inline char as_character(value_t v) {
+char as_character(value_t v) {
   return (char)boxed_data(v).as_uint32;
 }
 
-inline value_t make_error(context_p, uint32_t code) {
+value_t make_error(context_p, uint32_t code) {
   return make_boxed(BOX_ERROR, 0, (box_data_t)code);
 }
 
+bool is_error(value_t v) {
+  return is_boxed(BOX_ERROR, v);
+}
+
 /* strings */
+
+value_t make_string(context_p ctxt, char *str, int len) {
+  int offset = ctxt->string_buffer_offset;
+  memcpy(ctxt->string_buffer_ptr + offset, str, len);
+
+  // should already be the case, but ensure
+  ctxt->string_buffer_ptr[offset + len] = '\0';
+  ctxt->string_buffer_offset += len;
+  
+  // TODO: error handling
+  return make_handle(ctxt, HND_STRING, len, offset);
+}
+
+bool is_string(value_t v) {
+  return is_handle(HND_STRING, v);
+}
+
+char* string_ptr(context_p ctxt, value_t v) {
+  int offset = handle_offset(v);
+  return ctxt->string_buffer_ptr + offset;
+}
+
+uint32_t string_len(context_p, value_t v) {
+  return handle_aux(v);
+}
 
 /* symbols */
 
@@ -240,34 +302,34 @@ inline value_t make_error(context_p, uint32_t code) {
 
 /* cons cells */
 
-inline value_t make_cons(context_p ctxt, value_t car, value_t cdr) {
+value_t make_cons(context_p ctxt, value_t car, value_t cdr) {
   return alloc_cons(ctxt, car, cdr);
 }
 
-inline bool is_cons(value_t v) {
+bool is_cons(value_t v) {
   return is_handle(HND_CONS, v);
 }
 
-inline bool is_nil(value_t v) {
+bool is_nil(value_t v) {
   return value_exact(v, vnil);
 }
 
-inline value_t car(context_p ctxt, value_t hnd) {
+value_t car(context_p ctxt, value_t hnd) {
   int index = handle_offset(hnd);
   return ctxt->cons_pool_ptr[index];
 }
 
-inline value_t cdr(context_p ctxt, value_t hnd) {
+value_t cdr(context_p ctxt, value_t hnd) {
   int index = handle_offset(hnd);
   return ctxt->cons_pool_ptr[index + 1];
 }
 
-inline void set_car(context_p ctxt, value_t hnd, value_t v) {
+void set_car(context_p ctxt, value_t hnd, value_t v) {
   int index = handle_offset(hnd);
   ctxt->cons_pool_ptr[index] = v;
 }
 
-inline void set_cdr(context_p ctxt, value_t hnd, value_t v) {
+void set_cdr(context_p ctxt, value_t hnd, value_t v) {
   int index = handle_offset(hnd);
   ctxt->cons_pool_ptr[index + 1] = v;
 }
@@ -286,7 +348,7 @@ inline void set_cdr(context_p ctxt, value_t hnd, value_t v) {
 #define BOX_AUX_MASK    0x0000FFFF00000000
 #define BOX_DATA_MASK   0x00000000FFFFFFFF
 
-inline value_t make_boxed(box_type_t type, uint16_t aux, box_data_t value) {
+static value_t make_boxed(box_type_t type, uint16_t aux, box_data_t value) {
   value_t v;
   v.as_uint64 = BOX_MASK   |
     ((uint64_t)type << 48) |
@@ -296,20 +358,20 @@ inline value_t make_boxed(box_type_t type, uint16_t aux, box_data_t value) {
   return v;
 }
 
-inline bool is_boxed(box_type_t type, value_t v) {
+static bool is_boxed(box_type_t type, value_t v) {
   uint64_t type_mask = (uint64_t)type << 48;
   return (v.as_uint64 & (SPECIAL_MASK | BOX_TYPE_MASK)) == (BOX_MASK | type_mask);
 }
 
-inline box_type_t boxed_type(value_t v) {
+static box_type_t boxed_type(value_t v) {
   return ((box_type_t)((v.as_uint64 & BOX_TYPE_MASK) >> 48));
 }
 
-inline uint16_t boxed_aux(value_t v) {
+static uint16_t boxed_aux(value_t v) {
   return ((uint16_t)((v.as_uint64 & BOX_AUX_MASK) >> 32));
 }
 
-inline box_data_t boxed_data(value_t v) {
+static box_data_t boxed_data(value_t v) {
   return (box_data_t)((uint32_t)(v.as_uint64 & BOX_DATA_MASK));
 }
 
@@ -319,7 +381,7 @@ inline box_data_t boxed_data(value_t v) {
 #define PTR_TYPE_MASK   0x000F000000000000
 #define PTR_ADDR_MASK   0x0000FFFFFFFFFFFF
 
-value_t make_pointer(context_p, ptr_type_t type, void* addr) {
+static value_t make_pointer(context_p, ptr_type_t type, void* addr) {
   uint64_t as_int = (uint64_t)addr;
 
   if ((as_int & PTR_ADDR_MASK) != as_int) {
@@ -333,16 +395,16 @@ value_t make_pointer(context_p, ptr_type_t type, void* addr) {
   return v;
 }
 
-inline bool is_pointer(ptr_type_t type, value_t v) {
+static bool is_pointer(ptr_type_t type, value_t v) {
   uint64_t type_mask = (uint64_t)type << 48;
-  return (v.as_uint64 & (PTR_MASK | (type_mask & PTR_TYPE_MASK))) == (PTR_MASK | type_mask);
+  return (v.as_uint64 & (PTR_MASK | PTR_TYPE_MASK)) == (PTR_MASK | type_mask);
 }
 
-inline ptr_type_t pointer_type(value_t v) {
+static ptr_type_t pointer_type(value_t v) {
   return ((ptr_type_t)((v.as_uint64 & PTR_TYPE_MASK) >> 48));
 }
 
-inline void* pointer_addr(value_t v) {
+static void* pointer_addr(value_t v) {
   return (void *)(v.as_uint64 & PTR_ADDR_MASK);
 }
 
@@ -351,22 +413,26 @@ inline void* pointer_addr(value_t v) {
 #define HND_AUX_MASK   0x0000FFFF00000000
 #define HND_OFFSET_MASK 0x00000000FFFFFFFF
 
-inline value_t make_handle(context_p, hnd_type_t type, uint16_t aux, uint32_t offset) {
+static value_t make_handle(context_p, hnd_type_t type, uint16_t aux, uint32_t offset) {
   value_t v;
   v.as_uint64 = PTR_MASK | offset | ((uint64_t)type << 48) | ((uint64_t)aux << 32);
 
   return v;
 }
 
-inline bool is_handle(hnd_type_t type, value_t v) {
+static bool is_handle(hnd_type_t type, value_t v) {
   uint64_t type_mask = (uint64_t)type << 48;
-  return (v.as_uint64 & (PTR_MASK | (type_mask & PTR_TYPE_MASK))) == (PTR_MASK | type_mask);
+  return (v.as_uint64 & (PTR_MASK | PTR_TYPE_MASK)) == (PTR_MASK | type_mask);
 }
 
-inline uint16_t handle_aux(value_t v) {
+static hnd_type_t handle_type(value_t v) {
+  return ((hnd_type_t)((v.as_uint64 & PTR_TYPE_MASK) >> 48));
+}
+
+static uint16_t handle_aux(value_t v) {
   return ((uint16_t)((v.as_uint64 & HND_AUX_MASK) >> 32));
 }
 
-inline uint32_t handle_offset(value_t v) {
+static uint32_t handle_offset(value_t v) {
   return (uint32_t)(v.as_uint64 & HND_OFFSET_MASK);
 }

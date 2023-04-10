@@ -17,6 +17,9 @@ typedef struct context {
   int cons_pool_limit;
   value_t *cons_pool_ptr;
   value_t cons_free_list;
+  int string_buffer_limit;
+  int string_buffer_offset;
+  char *string_buffer_ptr;
 } context_t;
 
 typedef context_t* context_p;
@@ -71,26 +74,6 @@ value_t    read(context_p ctxt, FILE *in);
 value_t    eval(context_p ctxt, value_t v);
 void       print(context_p ctxt, value_t v);
 
-/* boxes */
-value_t    make_boxed(box_type_t type, uint16_t aux, box_data_t value);
-bool       is_boxed(box_type_t type, value_t v);
-box_type_t boxed_type(value_t v);
-uint16_t   boxed_aux(value_t v);
-box_data_t boxed_data(value_t v);
-
-/* pointers */
-value_t    make_pointer(context_p ctxt, ptr_type_t type, void* addr);
-bool       is_pointer(ptr_type_t type, value_t v);
-ptr_type_t pointer_type(value_t v);
-void*      pointer_addr(value_t v);
-
-/* handles */
-value_t    make_handle(context_p ctxt, hnd_type_t type, uint16_t aux, uint32_t offset);
-bool       is_handle(hnd_type_t type, value_t v);
-hnd_type_t handle_type(value_t v);
-uint16_t   handle_aux(value_t v);
-uint32_t   handle_offset(value_t v);
-
 /* comparisons */
 bool       value_exact(value_t a, value_t b);
 
@@ -127,11 +110,11 @@ value_t    make_character(context_p ctxt, char c);
 bool       is_character(value_t v);
 char       as_character(value_t v);
 
-
 /* strings */
 value_t    make_string(context_p ctxt, char *str, int len);
 bool       is_string(value_t v);
-char*      as_string(value_t v);
+char*      string_ptr(context_p ctxt, value_t v);
+uint32_t   string_len(context_p ctxt, value_t v);
 
 /* symbols */
 value_t    make_symbol(context_p ctxt, char *str, int len);

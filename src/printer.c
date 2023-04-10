@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <float.h>
 #include "scheme.h"
 
 static void print_raw(context_p ctxt, value_t v);
@@ -26,9 +27,10 @@ static void print_raw(context_p ctxt, value_t v) {
     return;
   }
 
-  if (is_handle(HND_CONS, v)) {
-    int offset = handle_offset(v);
-    return print_raw(ctxt, ctxt->cons_pool_ptr[offset]);
+  if (is_string(v)) {
+    char *ptr = string_ptr(ctxt, v);
+    printf("\"%s\"", ptr);
+    return;
   }
 
   if (is_character(v)) {
@@ -59,7 +61,7 @@ static void print_raw(context_p ctxt, value_t v) {
   }
 
   if (is_double(v)) {
-    printf("%f", as_double(v));
+    printf("%.*f" , DBL_DIG, as_double(v));
     return;
   }
 

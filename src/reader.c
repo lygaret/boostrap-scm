@@ -21,11 +21,12 @@ static bool try_consume_chars(const char* match, int len, FILE *in);
 /* reader */
 
 static value_t read_integer(context_p ctxt, FILE *in);
+static value_t read_double(context_p ctxt, uint32_t whole, FILE *in);
 static value_t read_slashchar(context_p ctxt, FILE *in);
 static value_t read_macrochar(context_p ctxt, FILE *in);
 static value_t read_pair(context_p ctxt, FILE *in);
+static value_t read_string(context_p ctxt, FILE *in);
 
-/* object *read_string(context_p ctxt, FILE *in); */
 /* object *read_symbol(context_p ctxt, FILE *in); */
 /* object *read_objvector(context_p ctxt, FILE *in); */
 
@@ -53,9 +54,9 @@ value_t read(context_p ctxt, FILE *in) {
   else if (c == '\\') {
     v = read_slashchar(ctxt, in);
   }
-  /* else if (c == '"') { */
-  /*   out = read_string(ctxt, in); */
-  /* } */
+  else if (c == '"') {
+    v = read_string(ctxt, in);
+  }
   else if (isdigit(c)) {
     ungetc(c, in);
     v = read_integer(ctxt, in);
@@ -114,38 +115,38 @@ value_t read_slashchar(context_p ctxt, FILE *in) {
 }
 
 /* '"' has already been read */
-/* object *read_string(context_p ctxt, FILE *in) { */
-/*   char c; */
-/*   char buffer[BUFFER_MAX]; */
-/*   int len = 0; */
+value_t read_string(context_p ctxt, FILE *in) {
+  char c;
+  char buffer[BUFFER_MAX];
+  int len = 0;
 
-/*   while((c = getc(in)) != '"') { */
-/*     if (c == EOF) { */
-/*       fprintf(stderr, "unterminated string literal\n"); */
-/*       exit(1); */
-/*     } */
+  while((c = getc(in)) != '"') {
+    if (c == EOF) {
+      fprintf(stderr, "unterminated string literal\n");
+      exit(1);
+    }
 
-/*     if (c == '\\') { */
-/*       c = getc(in); */
-/*       if (c == 'n') { */
-/*         c = '\n'; */
-/*       } else if (c == 't') { */
-/*         c = '\t'; */
-/*       } */
-/*     } */
+    if (c == '\\') {
+      c = getc(in);
+      if (c == 'n') {
+        c = '\n';
+      } else if (c == 't') {
+        c = '\t';
+      }
+    }
 
-/*     if (len < BUFFER_MAX - 1) { */
-/*       buffer[len++] = c; */
-/*     } */
-/*     else { */
-/*       fprintf(stderr, "string too long, max length is %d", BUFFER_MAX); */
-/*       exit(1); */
-/*     } */
-/*   } */
+    if (len < BUFFER_MAX - 1) {
+      buffer[len++] = c;
+    }
+    else {
+      fprintf(stderr, "string too long, max length is %d", BUFFER_MAX);
+      exit(1);
+    }
+  }
   
-/*   buffer[len++] = '\0'; */
-/*   return make_string(buffer, len); */
-/* } */
+  buffer[len++] = '\0';
+  return make_string(ctxt, buffer, len);
+}
 
 /* '#[' has already been consumed */
 /* read as pairs, convert to vector once we know the length */
@@ -219,11 +220,33 @@ value_t read_integer(context_p ctxt, FILE *in) {
       num = (num * 10) + (c - '0');
     }
 
+    if (c == '.') {
+      return read_double(ctxt, num, in);
+    }
+
     /* unread the non-digit */
     ungetc(c, in);
   }
 
   return make_integer(ctxt, (uint32_t)num);
+}
+
+/* whole number part and decimal point have already been read */
+static value_t read_double(context_p ctxt, uint32_t whole, FILE *in) {
+  double num = whole; // implicit conversion
+
+  char   c;
+  double i = 1.0;
+
+  while(isdigit(c = getc(in))) {
+    i = i / 10.0;
+    num = num + (i * (c - '0'));
+  }
+
+  /* unread the last non-digit */
+  ungetc(c, in);
+
+  return make_double(ctxt, num);
 }
 
 /* object *read_symbol(context_p ctxt, FILE *in) { */

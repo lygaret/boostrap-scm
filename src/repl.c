@@ -24,7 +24,14 @@ int main (void) {
     printf("> ");
     v = read(ctxt, stdin);
     v = eval(ctxt, v);
-    print(ctxt, v);
+
+    if (is_error(v)) {
+      printf("!!! error: %lx", v.as_uint64);
+    }
+    else {
+      print(ctxt, v);
+    }
+
     printf("\n");
   }
 

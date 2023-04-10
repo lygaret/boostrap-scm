@@ -26,8 +26,7 @@ static value_t read_slashchar(context_p ctxt, FILE *in);
 static value_t read_macrochar(context_p ctxt, FILE *in);
 static value_t read_pair(context_p ctxt, FILE *in);
 static value_t read_string(context_p ctxt, FILE *in);
-
-/* object *read_symbol(context_p ctxt, FILE *in); */
+static value_t read_symbol(context_p ctxt, FILE *in);
 /* object *read_objvector(context_p ctxt, FILE *in); */
 
 value_t read(context_p ctxt, FILE *in) {
@@ -62,9 +61,8 @@ value_t read(context_p ctxt, FILE *in) {
     v = read_integer(ctxt, in);
   }
   else {
-    /* ungetc(c, in); */
-    /* out = read_symbol(ctxt, in); */
-    v = make_error(ctxt, __LINE__);
+    ungetc(c, in);
+    v = read_symbol(ctxt, in);
   }
 
   /* require a delimiter after input */
@@ -249,28 +247,28 @@ static value_t read_double(context_p ctxt, uint32_t whole, FILE *in) {
   return make_double(ctxt, num);
 }
 
-/* object *read_symbol(context_p ctxt, FILE *in) { */
-/*   char c; */
-/*   char buffer[BUFFER_MAX]; */
-/*   int len = 0; */
+value_t read_symbol(context_p ctxt, FILE *in) {
+  char c;
+  char buffer[BUFFER_MAX];
+  int len = 0;
 
-/*   while (1) { */
-/*     c = getc(in); */
-/*     if (is_delimiter(c) || isspace(c)) */
-/*       break; */
+  while (1) {
+    c = getc(in);
+    if (is_delimiter(c) || isspace(c))
+      break;
 
-/*     if (len < BUFFER_MAX - 1) { */
-/*       buffer[len++] = c; */
-/*     } */
-/*     else { */
-/*       fprintf(stderr, "string too long, max length is %d", BUFFER_MAX); */
-/*       exit(1); */
-/*     } */
-/*   } */
+    if (len < BUFFER_MAX - 1) {
+      buffer[len++] = c;
+    }
+    else {
+      fprintf(stderr, "string too long, max length is %d", BUFFER_MAX);
+      exit(1);
+    }
+  }
 
-/*   ungetc(c, in); */
-/*   return make_symbol(ctxt, buffer, len); */
-/* } */
+  ungetc(c, in);
+  return make_symbol(ctxt, buffer, len);
+}
 
 /* the opening paren has already been read */
 value_t read_pair(context_p ctxt, FILE *in) {

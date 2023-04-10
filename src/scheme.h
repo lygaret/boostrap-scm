@@ -17,6 +17,8 @@ typedef struct context {
   int cons_pool_limit;
   value_t *cons_pool_ptr;
   value_t cons_free_list;
+  int symbol_pool_size;
+  value_t *symbol_pool_ptr;
   int string_buffer_limit;
   int string_buffer_offset;
   char *string_buffer_ptr;
@@ -27,8 +29,7 @@ typedef context_t* context_p;
 typedef enum {
   PTR_INVALID = 0,
   PTR_MALLOC,
-  PTR_POOL,
-  PTR_PRIMITIVE,
+  PTR_VECTOR,
 } ptr_type_t;
 
 typedef enum {
@@ -75,25 +76,27 @@ value_t    eval(context_p ctxt, value_t v);
 void       print(context_p ctxt, value_t v);
 
 /* comparisons */
-bool       value_exact(value_t a, value_t b);
+bool       equality_exact(context_p, value_t a, value_t b);
+bool       equality_string(context_p, value_t a, value_t b);
+bool       equality_cstring(context_p, value_t a, char* value, uint32_t len);
 
 /* refs (both pointers & handles) */
-bool       is_reference(value_t v);
+bool       is_reference(context_p, value_t v);
 
 /* bools */
-bool       is_vtruth(value_t v);
-bool       is_vfalse(value_t v);
+bool       is_vtruth(context_p, value_t v);
+bool       is_vfalse(context_p, value_t v);
 
 /* schemey bools (false = #f, everything else = #t) */
-bool       is_truthy(value_t v);
-bool       is_falsey(value_t v);
+bool       is_truthy(context_p, value_t v);
+bool       is_falsey(context_p, value_t v);
 
 /* doubles */
 value_t    make_double(context_p ctxt, double v);
 double     as_double(value_t v);
 bool       is_double(value_t v);
-bool       is_nan(value_t v);
-bool       is_inf(value_t v);
+bool       is_nan(context_p, value_t v);
+bool       is_inf(context_p, value_t v);
 
 /* ints */
 value_t    make_integer(context_p ctxt, uint32_t v);
@@ -112,13 +115,13 @@ char       as_character(value_t v);
 
 /* strings */
 value_t    make_string(context_p ctxt, char *str, int len);
-bool       is_string(value_t v);
+bool       is_string(context_p, value_t v);
 char*      string_ptr(context_p ctxt, value_t v);
 uint32_t   string_len(context_p ctxt, value_t v);
 
 /* symbols */
 value_t    make_symbol(context_p ctxt, char *str, int len);
-bool       is_symbol(value_t v);
+bool       is_symbol(context_p, value_t v);
 
 /* errors */
 value_t    make_error(context_p ctxt, uint32_t code);
@@ -126,22 +129,22 @@ bool       is_error(value_t v);
 
 /* cons cells */
 value_t    make_cons(context_p ctxt, value_t car, value_t cdr);
-bool       is_cons(value_t v);
-bool       is_nil(value_t v);
+bool       is_cons(context_p, value_t v);
+bool       is_nil(context_p, value_t v);
 
-value_t    car(context_p ctxt, value_t hnd);
-value_t    cdr(context_p ctxt, value_t hnd);
-#define caar(ctxt, hnd) car(ctxt, car(ctxt, hnd))
-#define cadr(ctxt, hnd) car(ctxt, cdr(ctxt, hnd))
-#define cdar(ctxt, hnd) cdr(ctxt, car(ctxt, hnd))
-#define cddr(ctxt, hnd) cdr(ctxt, cdr(ctxt, hnd))
+value_t    cons_car(context_p ctxt, value_t hnd);
+value_t    cons_cdr(context_p ctxt, value_t hnd);
+#define cons_caar(ctxt, hnd) cons_car(ctxt, cons_car(ctxt, hnd))
+#define cons_cadr(ctxt, hnd) cons_car(ctxt, cons_cdr(ctxt, hnd))
+#define cons_cdar(ctxt, hnd) cons_cdr(ctxt, cons_car(ctxt, hnd))
+#define cons_cddr(ctxt, hnd) cons_cdr(ctxt, cons_cdr(ctxt, hnd))
 
-void       set_car(context_p ctxt, value_t hnd, value_t v);
-void       set_cdr(context_p ctxt, value_t hnd, value_t v);
-#define set_caar(ctxt, hnd, v) set_car(ctxt, car(ctxt, hnd), v)
-#define set_cadr(ctxt, hnd, v) set_car(ctxt, cdr(ctxt, hnd), v)
-#define set_cdar(ctxt, hnd, v) set_cdr(ctxt, car(ctxt, hnd), v)
-#define set_cddr(ctxt, hnd, v) set_cdr(ctxt, cdr(ctxt, hnd), v)
+void       cons_set_car(context_p ctxt, value_t hnd, value_t v);
+void       cons_set_cdr(context_p ctxt, value_t hnd, value_t v);
+#define cons_set_caar(ctxt, hnd, v) cons_set_car(ctxt, cons_car(ctxt, hnd), v)
+#define cons_set_cadr(ctxt, hnd, v) cons_set_car(ctxt, cons_cdr(ctxt, hnd), v)
+#define cons_set_cdar(ctxt, hnd, v) cons_set_cdr(ctxt, cons_car(ctxt, hnd), v)
+#define cons_set_cddr(ctxt, hnd, v) cons_set_cdr(ctxt, cons_cdr(ctxt, hnd), v)
 
 /* buffers */
 value_t    make_buffer(context_p ctxt, int size, char fill);

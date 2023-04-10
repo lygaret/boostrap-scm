@@ -1,5 +1,5 @@
 CC       ?=
-CFLAGS   ?= -g -O0 -Wall -Wextra -Wno-unused-function
+CFLAGS   ?= -O0 -pg -g -Wall -Wextra -Wno-unused-function -Winline
 DBGFLAGS ?=
 
 BIN_PATH       := out

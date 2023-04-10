@@ -98,6 +98,10 @@ value_t vnil   = (value_t)((uint64_t)0xFFFFFFFFFFFFFFFFLL);
 value_t vtrue  = (value_t)((uint64_t)0x7FF1000000000001LL);
 value_t vfalse = (value_t)((uint64_t)0x7FF1000000000000LL);
 
+#define CONS_POOL_SIZE     4096
+#define STRING_BUFFER_SIZE 8192
+#define SYMBOL_POOL_SIZE  24
+
 // local forward decls
 
 /* boxes */
@@ -109,12 +113,14 @@ static box_data_t boxed_data(value_t v);
 
 /* pointers */
 static value_t    make_pointer(context_p ctxt, ptr_type_t type, void* addr);
+static value_t    reshape_pointer(context_p ctxt, value_t v, ptr_type_t type);
 static bool       is_pointer(ptr_type_t type, value_t v);
 static ptr_type_t pointer_type(value_t v);
 static void*      pointer_addr(value_t v);
 
 /* handles */
 static value_t    make_handle(context_p ctxt, hnd_type_t type, uint16_t aux, uint32_t offset);
+static value_t    reshape_handle(context_p ctxt, value_t v, hnd_type_t type);
 static bool       is_handle(hnd_type_t type, value_t v);
 static hnd_type_t handle_type(value_t v);
 static uint16_t   handle_aux(value_t v);
@@ -125,28 +131,38 @@ static uint32_t   handle_offset(value_t v);
 context_p alloc_context(int initial_size) {
   context_p ctxt = malloc(sizeof(context_t));
 
+  /* cons pool - initialized to all nil */
   int size      = initial_size * 2 * sizeof(value_t);
   value_t *pool = malloc(size);
   if (pool == NULL) {
     fprintf(stderr, "out of memory!\n");
     exit(1);
   }
-
-  /* initialize to nil (all 0xFF) */
   memset(pool, 0xFF, size);
-
   ctxt->cons_pool_size  = 1;
   ctxt->cons_pool_limit = initial_size;
   ctxt->cons_pool_ptr   = pool;
   ctxt->cons_free_list  = make_handle(ctxt, HND_CONS, 0, 0);
 
+  /* symbol pool */
+  size = SYMBOL_POOL_SIZE * sizeof(value_t);
+  value_t *symbols = malloc(size);
+  if (symbols == NULL) {
+    fprintf(stderr, "out of memory\n");
+    exit(1);
+  }
+  memset(symbols, 0xFF, size);
+  ctxt->symbol_pool_size = SYMBOL_POOL_SIZE;
+  ctxt->symbol_pool_ptr  = symbols;
+
+  /* string buffer */
   size = initial_size;
   char *buffer = malloc(size);
   if (buffer == NULL) {
     fprintf(stderr, "out of memory!\n");
     exit(1);
   }
-  
+  memset(buffer, 0x00, size);
   ctxt->string_buffer_limit  = initial_size;
   ctxt->string_buffer_offset = 0;
   ctxt->string_buffer_ptr    = buffer;
@@ -167,28 +183,47 @@ static value_t alloc_cons(context_p ctxt, value_t car, value_t cdr) {
 /* comparisons */
 
 /** exact value equality */
-bool value_exact(value_t a, value_t b) {
+bool equality_exact(context_p, value_t a, value_t b) {
   return a.as_uint64 == b.as_uint64;
 }
 
-/** literal equality */
-bool is_vtruth(value_t v) {
-  return value_exact(v, vtrue);
+bool equality_string(context_p ctxt, value_t a, value_t b) {
+  bool a_typed = is_string(ctxt, a) || is_symbol(ctxt, a);
+  bool b_typed = is_string(ctxt, b) || is_symbol(ctxt, b);
+  
+  if (!a_typed || !b_typed) { return false; }
+  if (string_len(ctxt, a) != string_len(ctxt, b)) { return false; }
+
+  return strncmp(string_ptr(ctxt, a), string_ptr(ctxt, b), string_len(ctxt, a)) == 0;
+}
+
+bool equality_cstring(context_p ctxt, value_t a, char *value, uint32_t len) {
+  bool a_typed = is_string(ctxt, a) || is_symbol(ctxt, a);
+  if (a_typed && (string_len(ctxt, a) == len)) {
+    return strncmp(string_ptr(ctxt, a), value, len) == 0;
+  }
+
+  return false;
 }
 
 /** literal equality */
-bool is_vfalse(value_t v) {
-  return value_exact(v, vfalse);
+bool is_vtruth(context_p ctxt, value_t v) {
+  return equality_exact(ctxt, v, vtrue);
+}
+
+/** literal equality */
+bool is_vfalse(context_p ctxt, value_t v) {
+  return equality_exact(ctxt, v, vfalse);
 }
 
 /** scheme-like predicate: everything but #f is truthy */
-bool is_truthy(value_t v) {
-  return !is_vfalse(v);
+bool is_truthy(context_p ctxt, value_t v) {
+  return !is_vfalse(ctxt, v);
 }
 
 /** scheme-like predicate: only #f is falsey */
-bool is_falsey(value_t v) {
-  return is_vfalse(v);
+bool is_falsey(context_p ctxt, value_t v) {
+  return is_vfalse(ctxt, v);
 }
 
 /* doubles */
@@ -211,12 +246,12 @@ bool is_double(value_t v) {
     (((v.as_uint64 & NOT_NANINF_MASK) >> 48) == 8);
 }
 
-bool is_nan(value_t v) {
-  return value_exact(v, vnan) || value_exact(v, vnanq);
+bool is_nan(context_p ctxt, value_t v) {
+  return equality_exact(ctxt, v, vnan) || equality_exact(ctxt, v, vnanq);
 }
 
-bool is_inf(value_t v) {
-  return value_exact(v, vpinf) || value_exact(v, vninf);
+bool is_inf(context_p ctxt, value_t v) {
+  return equality_exact(ctxt, v, vpinf) || equality_exact(ctxt, v, vninf);
 }
 
 /* integers */
@@ -283,7 +318,7 @@ value_t make_string(context_p ctxt, char *str, int len) {
   return make_handle(ctxt, HND_STRING, len, offset);
 }
 
-bool is_string(value_t v) {
+bool is_string(context_p, value_t v) {
   return is_handle(HND_STRING, v);
 }
 
@@ -298,6 +333,61 @@ uint32_t string_len(context_p, value_t v) {
 
 /* symbols */
 
+static int symbol_hash(char *name, unsigned int len) {
+  unsigned int i;
+  unsigned int hash = 0;
+  for (i = 0; i < len; i++) {
+    hash = (hash << 5) + name[i];
+  }
+
+  return hash % SYMBOL_POOL_SIZE;
+}
+
+value_t make_symbol(context_p ctxt, char* name, int len) {
+  value_t pair, key;
+  int hash = symbol_hash(name, len);
+
+  pair = ctxt->symbol_pool_ptr[hash];
+
+  // no list at the hash
+  if (is_nil(ctxt, pair)) {
+    key  = make_string(ctxt, name, len);
+    key  = reshape_handle(ctxt, key, HND_SYMBOL);
+
+    ctxt->symbol_pool_ptr[hash] = make_cons(ctxt, key, vnil);
+    return key;
+  }
+
+  while (1) {
+    value_t car = cons_car(ctxt, pair);
+    value_t cdr = cons_cdr(ctxt, pair);
+    
+    // found it
+    if (is_symbol(ctxt, car) &&
+        equality_cstring(ctxt, car, name, len)) {
+      return car;
+    }
+
+    // not in the list, add to the bottom
+    if (is_nil(ctxt, cdr)) {
+      key = make_string(ctxt, name, len);
+      key = reshape_handle(ctxt, key, HND_SYMBOL);
+      
+      car = make_cons(ctxt, key, vnil);
+      cons_set_cdr(ctxt, pair, car);
+
+      return key;
+    }
+
+    // keep looking
+    pair = cons_cdr(ctxt, pair);
+  }
+}
+
+bool is_symbol(context_p, value_t v) {
+  return is_handle(HND_SYMBOL, v);
+}
+
 /* errors */
 
 /* cons cells */
@@ -306,30 +396,30 @@ value_t make_cons(context_p ctxt, value_t car, value_t cdr) {
   return alloc_cons(ctxt, car, cdr);
 }
 
-bool is_cons(value_t v) {
+bool is_cons(context_p, value_t v) {
   return is_handle(HND_CONS, v);
 }
 
-bool is_nil(value_t v) {
-  return value_exact(v, vnil);
+bool is_nil(context_p ctxt, value_t v) {
+  return equality_exact(ctxt, v, vnil);
 }
 
-value_t car(context_p ctxt, value_t hnd) {
+value_t cons_car(context_p ctxt, value_t hnd) {
   int index = handle_offset(hnd);
   return ctxt->cons_pool_ptr[index];
 }
 
-value_t cdr(context_p ctxt, value_t hnd) {
+value_t cons_cdr(context_p ctxt, value_t hnd) {
   int index = handle_offset(hnd);
   return ctxt->cons_pool_ptr[index + 1];
 }
 
-void set_car(context_p ctxt, value_t hnd, value_t v) {
+void cons_set_car(context_p ctxt, value_t hnd, value_t v) {
   int index = handle_offset(hnd);
   ctxt->cons_pool_ptr[index] = v;
 }
 
-void set_cdr(context_p ctxt, value_t hnd, value_t v) {
+void cons_set_cdr(context_p ctxt, value_t hnd, value_t v) {
   int index = handle_offset(hnd);
   ctxt->cons_pool_ptr[index + 1] = v;
 }
@@ -337,6 +427,40 @@ void set_cdr(context_p ctxt, value_t hnd, value_t v) {
 /* buffers */
 
 /* vectors */
+
+value_t make_vector(context_p ctxt, int size, value_t fill) {
+  size += 1; // account for size header
+  value_t *vecptr = malloc((size + 1) * sizeof(value_t));
+  if (vecptr == NULL) {
+    fprintf(stderr, "out of memory!\n");
+    exit(1);
+  }
+
+  vecptr[0] = make_integer(ctxt, size);
+  for (; size > 0; size--) {
+    vecptr[size + 1] = fill;
+  }
+
+  return make_pointer(ctxt, PTR_VECTOR, vecptr);
+}
+
+bool is_vector(value_t v) {
+  return is_pointer(PTR_VECTOR, v);
+}
+
+value_t vector_get(context_p, value_t v, int index) {
+  // todo: bounds check
+  return ((value_t*)pointer_addr(v))[index];
+}
+
+void vector_set(context_p, value_t v, int index, value_t val) {
+  // todo: bounds check
+  ((value_t*)pointer_addr(v))[index] = val;
+}
+
+value_t vector_size(context_p, value_t v) {
+  return ((value_t*)pointer_addr(v))[0];
+}
 
 /* procs */
 
@@ -400,6 +524,13 @@ static bool is_pointer(ptr_type_t type, value_t v) {
   return (v.as_uint64 & (PTR_MASK | PTR_TYPE_MASK)) == (PTR_MASK | type_mask);
 }
 
+static value_t reshape_pointer(context_p, value_t v, ptr_type_t type) {
+  uint64_t typeless  = v.as_uint64 & ~PTR_TYPE_MASK;
+  uint64_t type_mask = (uint64_t)type << 48;
+
+  return (value_t)(typeless | type_mask);
+}
+
 static ptr_type_t pointer_type(value_t v) {
   return ((ptr_type_t)((v.as_uint64 & PTR_TYPE_MASK) >> 48));
 }
@@ -418,6 +549,13 @@ static value_t make_handle(context_p, hnd_type_t type, uint16_t aux, uint32_t of
   v.as_uint64 = PTR_MASK | offset | ((uint64_t)type << 48) | ((uint64_t)aux << 32);
 
   return v;
+}
+
+static value_t reshape_handle(context_p, value_t v, hnd_type_t type) {
+  uint64_t typeless  = v.as_uint64 & ~PTR_TYPE_MASK;
+  uint64_t type_mask = (uint64_t)type << 48;
+
+  return (value_t)(typeless | type_mask);
 }
 
 static bool is_handle(hnd_type_t type, value_t v) {

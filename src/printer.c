@@ -21,6 +21,16 @@ static void print_raw(context_p ctxt, value_t v) {
     return;
   }
 
+  if (is_compound_proc(ctxt, v)) {
+    printf("#<proc:user>");
+    return;
+  }
+
+  if (is_native_proc(ctxt, v)) {
+    printf("#<proc:native>");
+    return;
+  }
+
   if (is_cons(ctxt, v)) {
     printf("(");
     print_cons(ctxt, v);
@@ -99,7 +109,6 @@ static void print_cons(context_p ctxt, value_t v) {
 
 
 void print(context_p ctxt, value_t v) {
-  printf("[ %lx ]: ", v.as_uint64);
   print_raw(ctxt, v);
   printf("\n");
 }

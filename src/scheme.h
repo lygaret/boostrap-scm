@@ -32,6 +32,7 @@ typedef enum {
   PTR_INVALID = 0,
   PTR_MALLOC,
   PTR_VECTOR,
+  PTR_NATIVE_PROC,
 } ptr_type_t;
 
 typedef enum {
@@ -39,6 +40,7 @@ typedef enum {
   HND_CONS,
   HND_SYMBOL,
   HND_STRING,
+  HND_PROC,
 } hnd_type_t;
 
 typedef enum {
@@ -60,6 +62,8 @@ typedef union box_data {
 } box_data_t;
 
 context_p alloc_context(int initial_size);
+value_t   enhance_native_environment(context_p ctxt);
+value_t   enhance_scheme_environment(context_p ctxt);
 
 #define vnan   ((value_t)((uint64_t)0x7FF0000000000001LL))
 #define vnanq  ((value_t)((uint64_t)0x7FF1000000000001LL))
@@ -70,6 +74,7 @@ context_p alloc_context(int initial_size);
 #define vtrue  ((value_t)((uint64_t)0x7FF1000000000001LL))
 #define vfalse ((value_t)((uint64_t)0x7FF1000000000000LL))
 
+extern value_t symbegin;
 extern value_t symdefine;
 extern value_t symif;
 extern value_t symlambda;
@@ -79,12 +84,17 @@ extern value_t symquote;
 context_p  alloc_context(int);
 
 value_t    read(context_p, FILE*);
-value_t    eval(context_p, value_t);
+value_t    eval(context_p, value_t v, value_t *inoutenv);
 void       print(context_p, value_t);
 
-value_t    environment_get(context_p, value_t);
-void       environment_set(context_p, value_t, value_t);
-value_t    environment_fork(context_p);     
+value_t    environment_get(context_p, value_t env, value_t key);
+value_t    environment_set(context_p, value_t env, value_t key, value_t val);
+
+/* conversions */
+value_t    to_integer(context_p, value_t);
+value_t    to_character(context_p, value_t);
+value_t    to_string(context_p, value_t);
+value_t    to_symbol(context_p, value_t);
 
 /* comparisons */
 bool       equality_exact(context_p, value_t, value_t);
@@ -172,13 +182,19 @@ bool       is_vector(context_p, value_t v);
 
 /* procs */
 
-typedef value_t (*native_proc_fn)(context_p, value_t args);
+typedef value_t (*native_proc_fn)(context_p, value_t args, value_t env);
+
+bool       is_proc(context_p ctxt, value_t v);
+
+value_t    make_compound_proc(context_p, value_t args, value_t body, value_t env);
+bool       is_compound_proc(context_p, value_t v);
+value_t    compound_proc_body(context_p, value_t v);
+value_t    compound_proc_args(context_p, value_t v);
+value_t    compound_proc_env(context_p, value_t v);
 
 value_t    make_native_proc(context_p, native_proc_fn fn);
-value_t    make_compound_proc(context_p, value_t body, value_t env);
-
-bool       is_proc(context_p, value_t v);
 bool       is_native_proc(context_p, value_t v);
-bool       is_compound_proc(context_p, value_t v);
+
+native_proc_fn native_proc_function(context_p, value_t v);
 
 #endif

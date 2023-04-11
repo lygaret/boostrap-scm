@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <math.h>
 #include <string.h>
 #include "scheme.h"
 
@@ -93,6 +94,7 @@
 #define STRING_BUFFER_SIZE 8192
 #define SYMBOL_POOL_SIZE  24
 
+value_t symbegin;
 value_t symdefine;
 value_t symif;
 value_t symlambda;
@@ -102,6 +104,7 @@ value_t symquote;
 
 /* boxes */
 inline static value_t    make_boxed(box_type_t type, uint16_t aux, box_data_t value);
+inline static value_t    reshape_box(context_p ctxt, value_t v, box_type_t type);
 inline static bool       is_boxed(box_type_t type, value_t v);
 inline static box_type_t boxed_type(value_t v);
 inline static uint16_t   boxed_aux(value_t v);
@@ -168,6 +171,7 @@ context_p alloc_context(int initial_size) {
   ctxt->curr_env = make_cons(ctxt, vnil, vnil);
 
   /* initialize known symbols */
+  symbegin  = make_symbol(ctxt, "begin", 5);
   symdefine = make_symbol(ctxt, "define", 6);
   symif     = make_symbol(ctxt, "if", 2);
   symlambda = make_symbol(ctxt, "lambda", 6);
@@ -186,8 +190,8 @@ static value_t alloc_cons(context_p ctxt, value_t car, value_t cdr) {
   return make_handle(ctxt, HND_CONS, 0, index);
 }
 
-value_t environment_get(context_p ctxt, value_t key) {
-  value_t cursor = ctxt->curr_env;
+value_t environment_get(context_p ctxt, value_t env, value_t key) {
+  value_t cursor = env;
 
   while(1) {
     if (is_nil(ctxt, cursor)) {
@@ -202,9 +206,9 @@ value_t environment_get(context_p ctxt, value_t key) {
   }
 }
 
-void environment_set(context_p ctxt, value_t key, value_t value) {
+value_t environment_set(context_p ctxt, value_t env, value_t key, value_t value) {
   value_t newpair = make_cons(ctxt, key, value);
-  ctxt->curr_env = make_cons(ctxt, newpair, ctxt->curr_env);
+  return make_cons(ctxt, newpair, env);
 }
 
 /* comparisons */
@@ -496,6 +500,101 @@ inline value_t vector_size(context_p, value_t v) {
 
 /* procs */
 
+inline value_t make_native_proc(context_p ctxt, native_proc_fn fn) {
+  return make_pointer(ctxt, PTR_NATIVE_PROC, fn);
+}
+
+inline bool is_native_proc(context_p, value_t v) {
+  return is_pointer(PTR_NATIVE_PROC, v);
+}
+
+inline native_proc_fn native_proc_function(context_p, value_t v) {
+  return (native_proc_fn)pointer_addr(v);
+}
+
+// captures env!
+// (body . (args . env))
+inline value_t make_compound_proc(context_p ctxt, value_t args, value_t body, value_t env) {
+  value_t v = make_cons(ctxt, body, make_cons(ctxt, args, env));
+  return reshape_handle(ctxt, v, HND_PROC);
+}
+
+inline value_t compound_proc_body(context_p ctxt, value_t v) {
+  return cons_car(ctxt, v);
+}
+
+inline value_t compound_proc_args(context_p ctxt, value_t v) {
+  return cons_cadr(ctxt, v);
+}
+
+inline value_t compound_proc_env(context_p ctxt, value_t v) {
+  return cons_cddr(ctxt, v);
+}
+
+inline bool is_compound_proc(context_p, value_t v) {
+  return is_handle(HND_PROC, v);
+}
+
+inline bool is_proc(context_p ctxt, value_t v) {
+  return is_compound_proc(ctxt, v) || is_native_proc(ctxt, v);
+}
+
+/* conversions */
+
+value_t to_integer(context_p ctxt, value_t v) {
+  if (is_character(ctxt, v)) {
+    return reshape_box(ctxt, v, BOX_INTEGER);
+  }
+
+  if (is_double(ctxt, v)) {
+    return make_integer(ctxt, round(as_double(ctxt, v)));
+  }
+
+  if (is_string(ctxt, v)) {
+    uint32_t num = atoi(string_ptr(ctxt, v));
+    return make_integer(ctxt, num);
+  }
+
+  return make_error(ctxt, __LINE__);
+}
+
+value_t to_character(context_p ctxt, value_t v) {
+  if (is_integer(ctxt, v) && (as_integer(ctxt, v) < 256)) {
+    return reshape_box(ctxt, v, BOX_CHARACTER);
+  }
+
+  return make_error(ctxt, __LINE__);
+}
+
+value_t to_string(context_p ctxt, value_t v) {
+  if (is_symbol(ctxt, v)) {
+    value_t sym = environment_get(ctxt, v, ctxt->curr_env);
+    return reshape_handle(ctxt, sym, HND_STRING);
+  }
+
+  if (is_integer(ctxt, v)) {
+    char buffer[256];
+    int len = sprintf(buffer, "%d", as_integer(ctxt, v));
+    return make_string(ctxt, buffer, len);
+  }
+
+  if (is_double(ctxt, v)) {
+    char buffer[256];
+    int len = sprintf(buffer, "%lf", as_double(ctxt, v));
+    return make_string(ctxt, buffer, len);
+  }
+
+  return make_error(ctxt, __LINE__);
+}
+
+value_t to_symbol(context_p ctxt, value_t v) {
+  if (is_string(ctxt, v)) {
+    return make_symbol(ctxt, string_ptr(ctxt, v), string_len(ctxt, v));
+  }
+
+  return make_error(ctxt, __LINE__);
+}
+
 /* boxes */
 
 #define SPECIAL_MASK    0xFFF0000000000000
@@ -512,6 +611,13 @@ static value_t make_boxed(box_type_t type, uint16_t aux, box_data_t value) {
     ((uint64_t)value.as_uint32);
 
   return v;
+}
+
+inline value_t reshape_box(context_p, value_t v, box_type_t type) {
+  uint64_t typeless  = v.as_uint64 & ~BOX_TYPE_MASK;
+  uint64_t type_mask = (uint64_t)type << 48;
+
+  return (value_t)(typeless | type_mask);
 }
 
 inline static bool is_boxed(box_type_t type, value_t v) {
@@ -546,7 +652,7 @@ static value_t make_pointer(context_p, ptr_type_t type, void* addr) {
   }
   
   value_t v;
-  v.as_uint64 = PTR_MASK | as_int | ((uint64_t)(type & PTR_TYPE_MASK) << 48);
+  v.as_uint64 = PTR_MASK | (as_int & PTR_ADDR_MASK) | ((uint64_t)type << 48);
 
   return v;
 }

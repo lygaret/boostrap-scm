@@ -27,13 +27,6 @@ static void print_raw(context_p ctxt, value_t v) {
     return;
   }
 
-  if (is_symbol(ctxt, v)) {
-    int len = string_len(ctxt, v);
-    char *ptr = string_ptr(ctxt, v);
-    printf("%.*s", len, ptr);
-    return;
-  }
-
   if (is_string(ctxt, v)) {
     int len = string_len(ctxt, v);
     char *ptr = string_ptr(ctxt, v);
@@ -41,10 +34,17 @@ static void print_raw(context_p ctxt, value_t v) {
     return;
   }
 
-  if (is_character(v)) {
+  if (is_symbol(ctxt, v)) {
+    int len = string_len(ctxt, v);
+    char *ptr = string_ptr(ctxt, v);
+    printf("%.*s", len, ptr);
+    return;
+  }
+
+  if (is_character(ctxt, v)) {
     char value;
     
-    switch((value = as_character(v))) {
+    switch((value = as_character(ctxt, v))) {
     case ' ':
       printf("\\space");
       return;
@@ -63,13 +63,13 @@ static void print_raw(context_p ctxt, value_t v) {
     }
   }
 
-  if (is_integer(v)) {
-    printf("%d", as_integer(v));
+  if (is_integer(ctxt, v)) {
+    printf("%d", as_integer(ctxt, v));
     return;
   }
 
-  if (is_double(v)) {
-    printf("%.*f" , DBL_DIG, as_double(v));
+  if (is_double(ctxt, v)) {
+    printf("%.*f" , DBL_DIG, as_double(ctxt, v));
     return;
   }
 

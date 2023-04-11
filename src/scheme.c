@@ -167,6 +167,10 @@ context_p alloc_context(int initial_size) {
   ctxt->string_buffer_offset = 0;
   ctxt->string_buffer_ptr    = buffer;
 
+  /* environments */
+  ctxt->root_env = make_cons(ctxt, vnil, vnil);
+  ctxt->curr_env = make_cons(ctxt, vnil, vnil);
+
   return ctxt;
 }
 
@@ -178,6 +182,27 @@ static value_t alloc_cons(context_p ctxt, value_t car, value_t cdr) {
   ctxt->cons_pool_size          += 2;
 
   return make_handle(ctxt, HND_CONS, 0, index);
+}
+
+value_t environment_get(context_p ctxt, value_t key) {
+  value_t cursor = ctxt->curr_env;
+
+  while(1) {
+    if (is_nil(ctxt, cursor)) {
+      return vnil;
+    } 
+
+    if (equality_exact(ctxt, cons_caar(ctxt, cursor), key)) {
+      return cons_cdar(ctxt, cursor);
+    }
+
+    cursor = cons_car(ctxt, cursor);
+  }
+}
+
+void environment_set(context_p ctxt, value_t key, value_t value) {
+  value_t newpair = make_cons(ctxt, key, value);
+  ctxt->curr_env = make_cons(ctxt, newpair, ctxt->curr_env);
 }
 
 /* comparisons */
@@ -204,6 +229,10 @@ bool equality_cstring(context_p ctxt, value_t a, char *value, uint32_t len) {
   }
 
   return false;
+}
+
+bool is_boolean(context_p ctxt, value_t v) {
+  return is_vtruth(ctxt, v) || is_vfalse(ctxt, v);
 }
 
 /** literal equality */
@@ -235,15 +264,13 @@ value_t make_double(context_p, double v) {
   return (value_t)v;
 }
 
-double as_double(value_t v) {
+double as_double(context_p, value_t v) {
   return v.as_double;
 }
 
-bool is_double(value_t v) {
-  return
-    ((v.as_uint64 & NOT_DOUBLE_MASK) != NOT_DOUBLE_MASK) ||
-    (((v.as_uint64 & NOT_NANINF_MASK) >> 48) == 0)       ||
-    (((v.as_uint64 & NOT_NANINF_MASK) >> 48) == 8);
+bool is_double(context_p, value_t v) {
+  uint64_t u = v.as_uint64;
+  return (u & NOT_DOUBLE_MASK) != NOT_DOUBLE_MASK;
 }
 
 bool is_nan(context_p ctxt, value_t v) {
@@ -260,25 +287,24 @@ value_t make_integer(context_p, uint32_t value) {
   return make_boxed(BOX_INTEGER, 0, (box_data_t)value);
 }
 
-bool is_integer(value_t v) {
+bool is_integer(context_p, value_t v) {
   return is_boxed(BOX_INTEGER, v);
 }
   
-uint32_t as_integer(value_t v) {
+uint32_t as_integer(context_p, value_t v) {
   return boxed_data(v).as_uint32;
 }
-
 /* floats */
 
 value_t make_float(context_p, float value) {
   return make_boxed(BOX_FLOAT, 0, (box_data_t)value);
 }
 
-bool is_float(value_t v) {
+bool is_float(context_p, value_t v) {
   return is_boxed(BOX_FLOAT, v);
 }
 
-float as_float(value_t v) {
+float as_float(context_p, value_t v) {
   return boxed_data(v).as_float;
 }
 
@@ -288,11 +314,11 @@ value_t make_character(context_p, char value) {
   return make_boxed(BOX_CHARACTER, 0, (box_data_t)(uint32_t)value);
 }
 
-bool is_character(value_t v) {
+bool is_character(context_p, value_t v) {
   return is_boxed(BOX_CHARACTER, v);
 }
 
-char as_character(value_t v) {
+char as_character(context_p, value_t v) {
   return (char)boxed_data(v).as_uint32;
 }
 
@@ -300,7 +326,7 @@ value_t make_error(context_p, uint32_t code) {
   return make_boxed(BOX_ERROR, 0, (box_data_t)code);
 }
 
-bool is_error(value_t v) {
+bool is_error(context_p, value_t v) {
   return is_boxed(BOX_ERROR, v);
 }
 
@@ -444,7 +470,7 @@ value_t make_vector(context_p ctxt, int size, value_t fill) {
   return make_pointer(ctxt, PTR_VECTOR, vecptr);
 }
 
-bool is_vector(value_t v) {
+bool is_vector(context_p, value_t v) {
   return is_pointer(PTR_VECTOR, v);
 }
 

@@ -61,17 +61,17 @@ typedef union box_data {
 
 context_p alloc_context(int initial_size);
 
-extern value_t vnan;
-extern value_t vnanq;
-extern value_t vpinf;
-extern value_t vninf;
+#define vnan   ((value_t)((uint64_t)0x7FF0000000000001LL))
+#define vnanq  ((value_t)((uint64_t)0x7FF1000000000001LL))
+#define vpinf  ((value_t)((uint64_t)0x7FF0000000000000LL))
+#define vninf  ((value_t)((uint64_t)0xFFF0000000000000LL))
 
-extern value_t vnil;
-extern value_t vtrue;  
-extern value_t vfalse; 
+#define vnil   ((value_t)((uint64_t)0xFFFFFFFFFFFFFFFFLL))
+#define vtrue  ((value_t)((uint64_t)0x7FF1000000000001LL))
+#define vfalse ((value_t)((uint64_t)0x7FF1000000000000LL))
 
 /* the machine */
-context_p  alloc_context();
+context_p  alloc_context(int);
 
 value_t    read(context_p, FILE*);
 value_t    eval(context_p, value_t);

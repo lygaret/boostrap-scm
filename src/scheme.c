@@ -89,15 +89,6 @@
 
 /* fixed known globals; extern'd in header */ 
 
-value_t vnan   = (value_t)((uint64_t)0x7FF0000000000001LL);
-value_t vnanq  = (value_t)((uint64_t)0x7FF1000000000001LL);
-value_t vpinf  = (value_t)((uint64_t)0x7FF0000000000000LL);
-value_t vninf  = (value_t)((uint64_t)0xFFF0000000000000LL);
-
-value_t vnil   = (value_t)((uint64_t)0xFFFFFFFFFFFFFFFFLL);
-value_t vtrue  = (value_t)((uint64_t)0x7FF1000000000001LL);
-value_t vfalse = (value_t)((uint64_t)0x7FF1000000000000LL);
-
 #define CONS_POOL_SIZE     4096
 #define STRING_BUFFER_SIZE 8192
 #define SYMBOL_POOL_SIZE  24
@@ -105,26 +96,26 @@ value_t vfalse = (value_t)((uint64_t)0x7FF1000000000000LL);
 // local forward decls
 
 /* boxes */
-static value_t    make_boxed(box_type_t type, uint16_t aux, box_data_t value);
-static bool       is_boxed(box_type_t type, value_t v);
-static box_type_t boxed_type(value_t v);
-static uint16_t   boxed_aux(value_t v);
-static box_data_t boxed_data(value_t v);
+inline static value_t    make_boxed(box_type_t type, uint16_t aux, box_data_t value);
+inline static bool       is_boxed(box_type_t type, value_t v);
+inline static box_type_t boxed_type(value_t v);
+inline static uint16_t   boxed_aux(value_t v);
+inline static box_data_t boxed_data(value_t v);
 
 /* pointers */
-static value_t    make_pointer(context_p ctxt, ptr_type_t type, void* addr);
-static value_t    reshape_pointer(context_p ctxt, value_t v, ptr_type_t type);
-static bool       is_pointer(ptr_type_t type, value_t v);
-static ptr_type_t pointer_type(value_t v);
-static void*      pointer_addr(value_t v);
+inline static value_t    make_pointer(context_p ctxt, ptr_type_t type, void* addr);
+inline static value_t    reshape_pointer(context_p ctxt, value_t v, ptr_type_t type);
+inline static bool       is_pointer(ptr_type_t type, value_t v);
+inline static ptr_type_t pointer_type(value_t v);
+inline static void*      pointer_addr(value_t v);
 
 /* handles */
-static value_t    make_handle(context_p ctxt, hnd_type_t type, uint16_t aux, uint32_t offset);
-static value_t    reshape_handle(context_p ctxt, value_t v, hnd_type_t type);
-static bool       is_handle(hnd_type_t type, value_t v);
-static hnd_type_t handle_type(value_t v);
-static uint16_t   handle_aux(value_t v);
-static uint32_t   handle_offset(value_t v);
+inline static value_t    make_handle(context_p ctxt, hnd_type_t type, uint16_t aux, uint32_t offset);
+inline static value_t    reshape_handle(context_p ctxt, value_t v, hnd_type_t type);
+inline static bool       is_handle(hnd_type_t type, value_t v);
+inline static hnd_type_t handle_type(value_t v);
+inline static uint16_t   handle_aux(value_t v);
+inline static uint32_t   handle_offset(value_t v);
 
 /* pools and the ctxt */
 
@@ -208,7 +199,7 @@ void environment_set(context_p ctxt, value_t key, value_t value) {
 /* comparisons */
 
 /** exact value equality */
-bool equality_exact(context_p, value_t a, value_t b) {
+inline bool equality_exact(context_p, value_t a, value_t b) {
   return a.as_uint64 == b.as_uint64;
 }
 
@@ -231,27 +222,27 @@ bool equality_cstring(context_p ctxt, value_t a, char *value, uint32_t len) {
   return false;
 }
 
-bool is_boolean(context_p ctxt, value_t v) {
+inline bool is_boolean(context_p ctxt, value_t v) {
   return is_vtruth(ctxt, v) || is_vfalse(ctxt, v);
 }
 
 /** literal equality */
-bool is_vtruth(context_p ctxt, value_t v) {
+inline bool is_vtruth(context_p ctxt, value_t v) {
   return equality_exact(ctxt, v, vtrue);
 }
 
 /** literal equality */
-bool is_vfalse(context_p ctxt, value_t v) {
+inline bool is_vfalse(context_p ctxt, value_t v) {
   return equality_exact(ctxt, v, vfalse);
 }
 
 /** scheme-like predicate: everything but #f is truthy */
-bool is_truthy(context_p ctxt, value_t v) {
+inline bool is_truthy(context_p ctxt, value_t v) {
   return !is_vfalse(ctxt, v);
 }
 
 /** scheme-like predicate: only #f is falsey */
-bool is_falsey(context_p ctxt, value_t v) {
+inline bool is_falsey(context_p ctxt, value_t v) {
   return is_vfalse(ctxt, v);
 }
 
@@ -260,73 +251,73 @@ bool is_falsey(context_p ctxt, value_t v) {
 #define NOT_DOUBLE_MASK 0x7FF0000000000000
 #define NOT_NANINF_MASK 0x0009000000000000
 
-value_t make_double(context_p, double v) {
+inline value_t make_double(context_p, double v) {
   return (value_t)v;
 }
 
-double as_double(context_p, value_t v) {
+inline double as_double(context_p, value_t v) {
   return v.as_double;
 }
 
-bool is_double(context_p, value_t v) {
+inline bool is_double(context_p, value_t v) {
   uint64_t u = v.as_uint64;
   return (u & NOT_DOUBLE_MASK) != NOT_DOUBLE_MASK;
 }
 
-bool is_nan(context_p ctxt, value_t v) {
+inline bool is_nan(context_p ctxt, value_t v) {
   return equality_exact(ctxt, v, vnan) || equality_exact(ctxt, v, vnanq);
 }
 
-bool is_inf(context_p ctxt, value_t v) {
+inline bool is_inf(context_p ctxt, value_t v) {
   return equality_exact(ctxt, v, vpinf) || equality_exact(ctxt, v, vninf);
 }
 
 /* integers */
 
-value_t make_integer(context_p, uint32_t value) {
+inline value_t make_integer(context_p, uint32_t value) {
   return make_boxed(BOX_INTEGER, 0, (box_data_t)value);
 }
 
-bool is_integer(context_p, value_t v) {
+inline bool is_integer(context_p, value_t v) {
   return is_boxed(BOX_INTEGER, v);
 }
   
-uint32_t as_integer(context_p, value_t v) {
+inline uint32_t as_integer(context_p, value_t v) {
   return boxed_data(v).as_uint32;
 }
 /* floats */
 
-value_t make_float(context_p, float value) {
+inline value_t make_float(context_p, float value) {
   return make_boxed(BOX_FLOAT, 0, (box_data_t)value);
 }
 
-bool is_float(context_p, value_t v) {
+inline bool is_float(context_p, value_t v) {
   return is_boxed(BOX_FLOAT, v);
 }
 
-float as_float(context_p, value_t v) {
+inline float as_float(context_p, value_t v) {
   return boxed_data(v).as_float;
 }
 
 /* chars */
 
-value_t make_character(context_p, char value) {
+inline value_t make_character(context_p, char value) {
   return make_boxed(BOX_CHARACTER, 0, (box_data_t)(uint32_t)value);
 }
 
-bool is_character(context_p, value_t v) {
+inline bool is_character(context_p, value_t v) {
   return is_boxed(BOX_CHARACTER, v);
 }
 
-char as_character(context_p, value_t v) {
+inline char as_character(context_p, value_t v) {
   return (char)boxed_data(v).as_uint32;
 }
 
-value_t make_error(context_p, uint32_t code) {
+inline value_t make_error(context_p, uint32_t code) {
   return make_boxed(BOX_ERROR, 0, (box_data_t)code);
 }
 
-bool is_error(context_p, value_t v) {
+inline bool is_error(context_p, value_t v) {
   return is_boxed(BOX_ERROR, v);
 }
 
@@ -344,16 +335,16 @@ value_t make_string(context_p ctxt, char *str, int len) {
   return make_handle(ctxt, HND_STRING, len, offset);
 }
 
-bool is_string(context_p, value_t v) {
+inline bool is_string(context_p, value_t v) {
   return is_handle(HND_STRING, v);
 }
 
-char* string_ptr(context_p ctxt, value_t v) {
+inline char* string_ptr(context_p ctxt, value_t v) {
   int offset = handle_offset(v);
   return ctxt->string_buffer_ptr + offset;
 }
 
-uint32_t string_len(context_p, value_t v) {
+inline uint32_t string_len(context_p, value_t v) {
   return handle_aux(v);
 }
 
@@ -410,7 +401,7 @@ value_t make_symbol(context_p ctxt, char* name, int len) {
   }
 }
 
-bool is_symbol(context_p, value_t v) {
+inline bool is_symbol(context_p, value_t v) {
   return is_handle(HND_SYMBOL, v);
 }
 
@@ -418,34 +409,34 @@ bool is_symbol(context_p, value_t v) {
 
 /* cons cells */
 
-value_t make_cons(context_p ctxt, value_t car, value_t cdr) {
+inline value_t make_cons(context_p ctxt, value_t car, value_t cdr) {
   return alloc_cons(ctxt, car, cdr);
 }
 
-bool is_cons(context_p, value_t v) {
+inline bool is_cons(context_p, value_t v) {
   return is_handle(HND_CONS, v);
 }
 
-bool is_nil(context_p ctxt, value_t v) {
+inline bool is_nil(context_p ctxt, value_t v) {
   return equality_exact(ctxt, v, vnil);
 }
 
-value_t cons_car(context_p ctxt, value_t hnd) {
+inline value_t cons_car(context_p ctxt, value_t hnd) {
   int index = handle_offset(hnd);
   return ctxt->cons_pool_ptr[index];
 }
 
-value_t cons_cdr(context_p ctxt, value_t hnd) {
+inline value_t cons_cdr(context_p ctxt, value_t hnd) {
   int index = handle_offset(hnd);
   return ctxt->cons_pool_ptr[index + 1];
 }
 
-void cons_set_car(context_p ctxt, value_t hnd, value_t v) {
+inline void cons_set_car(context_p ctxt, value_t hnd, value_t v) {
   int index = handle_offset(hnd);
   ctxt->cons_pool_ptr[index] = v;
 }
 
-void cons_set_cdr(context_p ctxt, value_t hnd, value_t v) {
+inline void cons_set_cdr(context_p ctxt, value_t hnd, value_t v) {
   int index = handle_offset(hnd);
   ctxt->cons_pool_ptr[index + 1] = v;
 }
@@ -470,21 +461,21 @@ value_t make_vector(context_p ctxt, int size, value_t fill) {
   return make_pointer(ctxt, PTR_VECTOR, vecptr);
 }
 
-bool is_vector(context_p, value_t v) {
+inline bool is_vector(context_p, value_t v) {
   return is_pointer(PTR_VECTOR, v);
 }
 
-value_t vector_get(context_p, value_t v, int index) {
+inline value_t vector_get(context_p, value_t v, int index) {
   // todo: bounds check
   return ((value_t*)pointer_addr(v))[index];
 }
 
-void vector_set(context_p, value_t v, int index, value_t val) {
+inline void vector_set(context_p, value_t v, int index, value_t val) {
   // todo: bounds check
   ((value_t*)pointer_addr(v))[index] = val;
 }
 
-value_t vector_size(context_p, value_t v) {
+inline value_t vector_size(context_p, value_t v) {
   return ((value_t*)pointer_addr(v))[0];
 }
 
@@ -508,20 +499,20 @@ static value_t make_boxed(box_type_t type, uint16_t aux, box_data_t value) {
   return v;
 }
 
-static bool is_boxed(box_type_t type, value_t v) {
+inline static bool is_boxed(box_type_t type, value_t v) {
   uint64_t type_mask = (uint64_t)type << 48;
   return (v.as_uint64 & (SPECIAL_MASK | BOX_TYPE_MASK)) == (BOX_MASK | type_mask);
 }
 
-static box_type_t boxed_type(value_t v) {
+inline static box_type_t boxed_type(value_t v) {
   return ((box_type_t)((v.as_uint64 & BOX_TYPE_MASK) >> 48));
 }
 
-static uint16_t boxed_aux(value_t v) {
+inline static uint16_t boxed_aux(value_t v) {
   return ((uint16_t)((v.as_uint64 & BOX_AUX_MASK) >> 32));
 }
 
-static box_data_t boxed_data(value_t v) {
+inline static box_data_t boxed_data(value_t v) {
   return (box_data_t)((uint32_t)(v.as_uint64 & BOX_DATA_MASK));
 }
 
@@ -545,23 +536,23 @@ static value_t make_pointer(context_p, ptr_type_t type, void* addr) {
   return v;
 }
 
-static bool is_pointer(ptr_type_t type, value_t v) {
+inline static bool is_pointer(ptr_type_t type, value_t v) {
   uint64_t type_mask = (uint64_t)type << 48;
   return (v.as_uint64 & (PTR_MASK | PTR_TYPE_MASK)) == (PTR_MASK | type_mask);
 }
 
-static value_t reshape_pointer(context_p, value_t v, ptr_type_t type) {
+inline static value_t reshape_pointer(context_p, value_t v, ptr_type_t type) {
   uint64_t typeless  = v.as_uint64 & ~PTR_TYPE_MASK;
   uint64_t type_mask = (uint64_t)type << 48;
 
   return (value_t)(typeless | type_mask);
 }
 
-static ptr_type_t pointer_type(value_t v) {
+inline static ptr_type_t pointer_type(value_t v) {
   return ((ptr_type_t)((v.as_uint64 & PTR_TYPE_MASK) >> 48));
 }
 
-static void* pointer_addr(value_t v) {
+inline static void* pointer_addr(value_t v) {
   return (void *)(v.as_uint64 & PTR_ADDR_MASK);
 }
 
@@ -570,33 +561,33 @@ static void* pointer_addr(value_t v) {
 #define HND_AUX_MASK   0x0000FFFF00000000
 #define HND_OFFSET_MASK 0x00000000FFFFFFFF
 
-static value_t make_handle(context_p, hnd_type_t type, uint16_t aux, uint32_t offset) {
+inline static value_t make_handle(context_p, hnd_type_t type, uint16_t aux, uint32_t offset) {
   value_t v;
   v.as_uint64 = PTR_MASK | offset | ((uint64_t)type << 48) | ((uint64_t)aux << 32);
 
   return v;
 }
 
-static value_t reshape_handle(context_p, value_t v, hnd_type_t type) {
+inline static value_t reshape_handle(context_p, value_t v, hnd_type_t type) {
   uint64_t typeless  = v.as_uint64 & ~PTR_TYPE_MASK;
   uint64_t type_mask = (uint64_t)type << 48;
 
   return (value_t)(typeless | type_mask);
 }
 
-static bool is_handle(hnd_type_t type, value_t v) {
+inline static bool is_handle(hnd_type_t type, value_t v) {
   uint64_t type_mask = (uint64_t)type << 48;
   return (v.as_uint64 & (PTR_MASK | PTR_TYPE_MASK)) == (PTR_MASK | type_mask);
 }
 
-static hnd_type_t handle_type(value_t v) {
+inline static hnd_type_t handle_type(value_t v) {
   return ((hnd_type_t)((v.as_uint64 & PTR_TYPE_MASK) >> 48));
 }
 
-static uint16_t handle_aux(value_t v) {
+inline static uint16_t handle_aux(value_t v) {
   return ((uint16_t)((v.as_uint64 & HND_AUX_MASK) >> 32));
 }
 
-static uint32_t handle_offset(value_t v) {
+inline static uint32_t handle_offset(value_t v) {
   return (uint32_t)(v.as_uint64 & HND_OFFSET_MASK);
 }

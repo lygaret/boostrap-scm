@@ -6,3 +6,9 @@ miriam is:
 - A compiler for that language
 - A bare-metal runtime
 - A bootable kernel, with multiple processes
+- fun to hack on
+
+miriam is *not*:
+
+- particularly fast
+- particularly innovative

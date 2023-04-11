@@ -70,6 +70,11 @@ context_p alloc_context(int initial_size);
 #define vtrue  ((value_t)((uint64_t)0x7FF1000000000001LL))
 #define vfalse ((value_t)((uint64_t)0x7FF1000000000000LL))
 
+extern value_t symdefine;
+extern value_t symif;
+extern value_t symlambda;
+extern value_t symquote;
+
 /* the machine */
 context_p  alloc_context(int);
 
@@ -137,14 +142,18 @@ bool       is_error(context_p, value_t);
 /* cons cells */
 value_t    make_cons(context_p, value_t car, value_t cdr);
 bool       is_cons(context_p, value_t);
+bool       is_atom(context_p, value_t);
 bool       is_nil(context_p, value_t);
 
 value_t    cons_car(context_p, value_t);
 value_t    cons_cdr(context_p, value_t);
-#define cons_caar(ctxt, hnd) cons_car(ctxt, cons_car(ctxt, hnd))
-#define cons_cadr(ctxt, hnd) cons_car(ctxt, cons_cdr(ctxt, hnd))
-#define cons_cdar(ctxt, hnd) cons_cdr(ctxt, cons_car(ctxt, hnd))
-#define cons_cddr(ctxt, hnd) cons_cdr(ctxt, cons_cdr(ctxt, hnd))
+#define cons_caar(ctxt, hnd)   cons_car(ctxt, cons_car(ctxt, hnd))
+#define cons_cadr(ctxt, hnd)   cons_car(ctxt, cons_cdr(ctxt, hnd))
+#define cons_cdar(ctxt, hnd)   cons_cdr(ctxt, cons_car(ctxt, hnd))
+#define cons_cddr(ctxt, hnd)   cons_cdr(ctxt, cons_cdr(ctxt, hnd))
+#define cons_cdddr(ctxt, hnd)  cons_cdr(ctxt, cons_cddr(ctxt, hnd))
+#define cons_caddr(ctxt, hnd)  cons_car(ctxt, cons_cddr(ctxt, hnd))
+#define cons_cadddr(ctxt, hnd) cons_car(ctxt, cons_cdddr(ctxt, hnd))
 
 void       cons_set_car(context_p, value_t pair, value_t val);
 void       cons_set_cdr(context_p, value_t pair, value_t val);

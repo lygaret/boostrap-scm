@@ -93,6 +93,11 @@
 #define STRING_BUFFER_SIZE 8192
 #define SYMBOL_POOL_SIZE  24
 
+value_t symdefine;
+value_t symif;
+value_t symlambda;
+value_t symquote;
+
 // local forward decls
 
 /* boxes */
@@ -162,6 +167,12 @@ context_p alloc_context(int initial_size) {
   ctxt->root_env = make_cons(ctxt, vnil, vnil);
   ctxt->curr_env = make_cons(ctxt, vnil, vnil);
 
+  /* initialize known symbols */
+  symdefine = make_symbol(ctxt, "define", 6);
+  symif     = make_symbol(ctxt, "if", 2);
+  symlambda = make_symbol(ctxt, "lambda", 6);
+  symquote  = make_symbol(ctxt, "quote", 5);
+
   return ctxt;
 }
 
@@ -187,7 +198,7 @@ value_t environment_get(context_p ctxt, value_t key) {
       return cons_cdar(ctxt, cursor);
     }
 
-    cursor = cons_car(ctxt, cursor);
+    cursor = cons_cdr(ctxt, cursor);
   }
 }
 
@@ -415,6 +426,10 @@ inline value_t make_cons(context_p ctxt, value_t car, value_t cdr) {
 
 inline bool is_cons(context_p, value_t v) {
   return is_handle(HND_CONS, v);
+}
+
+inline bool is_atom(context_p ctxt, value_t v) {
+  return !is_cons(ctxt, v);
 }
 
 inline bool is_nil(context_p ctxt, value_t v) {

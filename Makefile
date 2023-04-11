@@ -1,5 +1,5 @@
 CC       ?= clang
-CFLAGS   ?= -O3 -g -flto=thin -std=c2x -Wall -Wextra -Wno-unused-function -Winline
+CFLAGS   ?= -O0 -g -flto=thin -std=c2x -Wall -Wextra -Wno-unused-function -Winline
 DBGFLAGS ?=
 
 BIN_PATH       := out

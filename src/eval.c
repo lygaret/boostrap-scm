@@ -48,6 +48,12 @@ value_t eval(context_p ctxt, value_t v, value_t* env) {
       value_t val = eval(ctxt, cons_caddr(ctxt, v), env);
       *env = environment_set(ctxt, *env, cons_cadr(ctxt, v), val);
 
+      // include the function in it's own captured env
+      // (body . (args . env))
+      if (is_compound_proc(ctxt, val)) {
+        cons_set_cdr(ctxt, cons_cdr(ctxt, val), *env);
+      }
+
       return vnil;
     }
 

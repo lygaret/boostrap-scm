@@ -1,14 +1,55 @@
 #+TITLE: miriam
 
-miriam is:
-
 - A scheme-like dialect
 - A compiler for that language
 - A bare-metal runtime
 - A bootable kernel, with multiple processes
 - fun to hack on
 
-miriam is *not*:
+miriam is *not*
 
 - particularly fast
 - particularly innovative
+
+* plan
+
+- simple, slow bootstrap scheme, written in 0-dep c
+- typed scheme compiler, written in scheme (bytecode interp)
+- optimized bytecode interpreter that works on bare metal
+- bring multiprocess kernel up around interp
+- simple shell+userspace
+
+* reading
+
+- Lisp in Small Pieces - Queinnec, 94
+- Compiling with Continuations - Appel, 92
+- [[https://www2.ccs.neu.edu/racket/pubs/dissertation-tobin-hochstadt.pdf][Typed Scheme - Tobin-Hochstadt, 2010]]
+- [[https://cpsc.yale.edu/sites/default/files/files/tr445.pdf][Orbit Compiler - Kranz, et al, 1986]]
+
+* current status
+
+- tiny native lib
+- hopelessly inefficient
+- probably terrible adherance to semantics
+- fun to hack on
+
+#+begin_src lisp
+  ; bootstrap scheme v0.01
+  ; use ctrl-d to exit.
+
+  > (define map
+        (lambda (proc items)
+          (if (null? items)
+              ()
+                (cons (proc (car items))
+                      (map proc (cdr items))))))
+  ()
+  > (define square
+        (lambda (num)
+          (* num num)))
+  ()
+  > (map square '(0 1 2 3 4 5))
+  (0 1 4 9 16 25)
+
+  ; yay!
+#+end_src

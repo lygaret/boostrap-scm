@@ -2,10 +2,9 @@
 #include <float.h>
 #include "scheme.h"
 
-static void print_raw(context_p ctxt, value_t v);
 static void print_cons(context_p ctxt, value_t v);
 
-static void print_raw(context_p ctxt, value_t v) {
+void print(context_p ctxt, value_t v) {
   if (is_nil(ctxt, v)) {
     printf("()");
     return;
@@ -90,7 +89,7 @@ static void print_raw(context_p ctxt, value_t v) {
 }
 
 static void print_cons(context_p ctxt, value_t v) {
-  print_raw(ctxt, cons_car(ctxt, v));
+  print(ctxt, cons_car(ctxt, v));
 
   value_t tail = cons_cdr(ctxt, v);
   if (is_nil(ctxt, tail)) {
@@ -103,12 +102,6 @@ static void print_cons(context_p ctxt, value_t v) {
     return;
   }
   printf(" . ");
-  print_raw(ctxt, tail);
+  print(ctxt, tail);
   printf(")");
-}
-
-
-void print(context_p ctxt, value_t v) {
-  print_raw(ctxt, v);
-  printf("\n");
 }
